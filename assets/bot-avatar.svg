@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img">
+  <title>lateXercise-bot avatar</title>
+  <desc>A white lambda on a Discord-blurple background.</desc>
+  <defs>
+    <radialGradient id="g" cx="0.5" cy="0.4" r="0.65">
+      <stop offset="0" stop-color="#7480f6"/>
+      <stop offset="0.55" stop-color="#5865F2"/>
+      <stop offset="1" stop-color="#4650d4"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <!-- subtle ring echoing Discord's circular crop -->
+  <circle cx="256" cy="256" r="232" fill="none" stroke="#ffffff" stroke-opacity="0.10" stroke-width="6"/>
+  <!-- lambda -->
+  <text x="256" y="258" text-anchor="middle" dominant-baseline="central" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="340" fill="#ffffff">&#955;</text>
+</svg>
