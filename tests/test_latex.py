@@ -143,15 +143,15 @@ def test_render_tex_unlabelled_single_image_has_no_paragraph() -> None:
     # exactly like ex1.tex.
     tex = render_tex(
         6,
-        [ExerciseDoc(index=1, parts=[FigurePart(label="", image_paths=["ex06/aufgabe1_1.png"])])],
+        [ExerciseDoc(index=1, parts=[FigurePart(label="", image_paths=["ex06/exercise1_1.png"])])],
     )
     assert "\\paragraph" not in tex
-    assert "\\section*{Aufgabe 1}" in tex
+    assert "\\section*{Exercise 1}" in tex
     # Exactly one figure block for the single image.
     assert tex.count("\\begin{figure}[!htb]") == 1
     assert tex.count("\\end{figure}") == 1
     assert "\\centering" in tex
-    assert "\\includegraphics[width=0.95\\linewidth]{ex06/aufgabe1_1.png}" in tex
+    assert "\\includegraphics[width=0.95\\linewidth]{ex06/exercise1_1.png}" in tex
 
 
 # ===========================================================================
@@ -161,12 +161,12 @@ def test_render_tex_unlabelled_single_image_has_no_paragraph() -> None:
 def test_render_tex_single_labelled_part_emits_paragraph() -> None:
     tex = render_tex(
         6,
-        [ExerciseDoc(index=1, parts=[FigurePart(label="a", image_paths=["ex06/aufgabe1_a_1.png"])])],
+        [ExerciseDoc(index=1, parts=[FigurePart(label="a", image_paths=["ex06/exercise1_a_1.png"])])],
     )
     assert "\\paragraph{(a)}" in tex
     # The \paragraph must come BEFORE its figure block.
     assert tex.index("\\paragraph{(a)}") < tex.index("\\begin{figure}")
-    assert "\\includegraphics[width=0.95\\linewidth]{ex06/aufgabe1_a_1.png}" in tex
+    assert "\\includegraphics[width=0.95\\linewidth]{ex06/exercise1_a_1.png}" in tex
     assert tex.count("\\begin{figure}[!htb]") == 1
 
 
@@ -178,8 +178,8 @@ def test_render_tex_two_labelled_parts_ordered() -> None:
             ExerciseDoc(
                 index=1,
                 parts=[
-                    FigurePart(label="a", image_paths=["ex06/aufgabe1_a_1.png"]),
-                    FigurePart(label="b", image_paths=["ex06/aufgabe1_b_1.jpeg"]),
+                    FigurePart(label="a", image_paths=["ex06/exercise1_a_1.png"]),
+                    FigurePart(label="b", image_paths=["ex06/exercise1_b_1.jpeg"]),
                 ],
             )
         ],
@@ -189,8 +189,8 @@ def test_render_tex_two_labelled_parts_ordered() -> None:
     # Part order is preserved: (a) before (b).
     assert tex.index("\\paragraph{(a)}") < tex.index("\\paragraph{(b)}")
     # Each part's image follows its own paragraph and precedes the next paragraph.
-    assert tex.index("aufgabe1_a_1.png") < tex.index("\\paragraph{(b)}")
-    assert tex.index("\\paragraph{(b)}") < tex.index("aufgabe1_b_1.jpeg")
+    assert tex.index("exercise1_a_1.png") < tex.index("\\paragraph{(b)}")
+    assert tex.index("\\paragraph{(b)}") < tex.index("exercise1_b_1.jpeg")
     assert tex.count("\\begin{figure}[!htb]") == 2
 
 
@@ -202,11 +202,11 @@ def test_render_tex_combined_part_paragraph() -> None:
     # A single photo covering parts a and b: \paragraph{(a) (b)} above one figure.
     tex = render_tex(
         6,
-        [ExerciseDoc(index=1, parts=[FigurePart(label="a b", image_paths=["ex06/aufgabe1_ab_1.jpg"])])],
+        [ExerciseDoc(index=1, parts=[FigurePart(label="a b", image_paths=["ex06/exercise1_ab_1.jpg"])])],
     )
     assert "\\paragraph{(a) (b)}" in tex
     assert tex.count("\\begin{figure}[!htb]") == 1
-    assert "\\includegraphics[width=0.95\\linewidth]{ex06/aufgabe1_ab_1.jpg}" in tex
+    assert "\\includegraphics[width=0.95\\linewidth]{ex06/exercise1_ab_1.jpg}" in tex
     assert tex.index("\\paragraph{(a) (b)}") < tex.index("\\begin{figure}")
 
 
@@ -225,7 +225,7 @@ def test_render_tex_multipage_part_stacks_figures_under_one_paragraph() -> None:
                 parts=[
                     FigurePart(
                         label="b",
-                        image_paths=["ex06/aufgabe1_b_1.jpeg", "ex06/aufgabe1_b_2.jpeg"],
+                        image_paths=["ex06/exercise1_b_1.jpeg", "ex06/exercise1_b_2.jpeg"],
                     )
                 ],
             )
@@ -239,8 +239,8 @@ def test_render_tex_multipage_part_stacks_figures_under_one_paragraph() -> None:
     assert tex.count("\\end{figure}") == 2
     # Page order preserved: page 1 before page 2, both after the paragraph.
     p = tex.index("\\paragraph{(b)}")
-    i1 = tex.index("aufgabe1_b_1.jpeg")
-    i2 = tex.index("aufgabe1_b_2.jpeg")
+    i1 = tex.index("exercise1_b_1.jpeg")
+    i2 = tex.index("exercise1_b_2.jpeg")
     assert p < i1 < i2
     # A blank line separates consecutive figure blocks (readability convention).
     assert "\\end{figure}\n\n\\begin{figure}[!htb]" in tex
@@ -265,12 +265,12 @@ def test_render_tex_newpage_between_exercises_not_after_last() -> None:
     # The last exercise's figure must come AFTER the final \newpage, and nothing
     # (other than \end{document}) follows it: i.e. there is no \newpage after the
     # last section.
-    last_section = tex.rindex("\\section*{Aufgabe 3}")
+    last_section = tex.rindex("\\section*{Exercise 3}")
     assert "\\newpage" not in tex[last_section:]
     # \end{document} is the tail and is not preceded by a stray trailing \newpage.
     assert tex.rstrip().endswith("\\end{document}")
     # Section ordering is ascending.
-    assert tex.index("Aufgabe 1") < tex.index("Aufgabe 2") < tex.index("Aufgabe 3")
+    assert tex.index("Exercise 1") < tex.index("Exercise 2") < tex.index("Exercise 3")
 
 
 def test_render_tex_sorts_exercises_by_index() -> None:
@@ -283,8 +283,8 @@ def test_render_tex_sorts_exercises_by_index() -> None:
             ExerciseDoc(index=2, parts=[FigurePart(label="", image_paths=["ex06/a2.png"])]),
         ],
     )
-    assert tex.index("\\section*{Aufgabe 1}") < tex.index("\\section*{Aufgabe 2}")
-    assert tex.index("\\section*{Aufgabe 2}") < tex.index("\\section*{Aufgabe 3}")
+    assert tex.index("\\section*{Exercise 1}") < tex.index("\\section*{Exercise 2}")
+    assert tex.index("\\section*{Exercise 2}") < tex.index("\\section*{Exercise 3}")
     # Newpage still appears only between, twice.
     assert tex.count("\\newpage") == 2
 
@@ -309,14 +309,14 @@ def test_render_tex_includegraphics_paths_are_root_relative() -> None:
         [
             ExerciseDoc(
                 index=1,
-                parts=[FigurePart(label="a", image_paths=["ex06/aufgabe1_a_1.png"])],
+                parts=[FigurePart(label="a", image_paths=["ex06/exercise1_a_1.png"])],
             )
         ],
     )
-    assert "{ex06/aufgabe1_a_1.png}" in tex
+    assert "{ex06/exercise1_a_1.png}" in tex
     # The path is root-relative: it appears right after the closing brace of the
     # width option, with no leading slash.
-    assert "\\includegraphics[width=0.95\\linewidth]{ex06/aufgabe1_a_1.png}" in tex
+    assert "\\includegraphics[width=0.95\\linewidth]{ex06/exercise1_a_1.png}" in tex
     assert "{/ex06/" not in tex  # not absolute
 
 
@@ -327,7 +327,7 @@ def test_render_tex_includegraphics_paths_are_root_relative() -> None:
 def test_render_tex_empty_parts_yields_only_section_header() -> None:
     # An exercise with no parts contributes its \section* header and no figures.
     tex = render_tex(6, [ExerciseDoc(index=1, parts=[])])
-    assert "\\section*{Aufgabe 1}" in tex
+    assert "\\section*{Exercise 1}" in tex
     assert "\\begin{figure}" not in tex
     assert "\\paragraph" not in tex
 
@@ -421,17 +421,17 @@ def test_render_tex_overrides_emit_renewcommands_after_usepackage() -> None:
     ov = HeaderOverrides(
         group_number="017",
         course="GLOIN WiSe 2026",
-        tutorium="Tutorium 03",
-        authors=["Anna Beispiel, 111111", "Ben Muster, 222222"],
+        tutorium="Tutorial 03",
+        authors=["Anna Sample, 111111", "Ben Example, 222222"],
     )
     tex = render_tex(7, _doc(), ov)
     assert "\\renewcommand{\\ExerciseGroup}{017}" in tex
     assert "\\renewcommand{\\exerciseCourse}{GLOIN WiSe 2026}" in tex
-    assert "\\renewcommand{\\exerciseGroup}{Tutorium 03}" in tex
+    assert "\\renewcommand{\\exerciseGroup}{Tutorial 03}" in tex
     assert "\\renewcommand{\\exerciseAuthors}{" in tex
     # Both authors present and separated by a LaTeX line break (\\).
-    assert "Anna Beispiel, 111111" in tex
-    assert "Ben Muster, 222222" in tex
+    assert "Anna Sample, 111111" in tex
+    assert "Ben Example, 222222" in tex
     assert "111111\\\\" in tex  # trailing LaTeX line break after the first author
     # Overrides must come AFTER the package load (renewcommand needs the macros to exist)
     # and BEFORE \exerciseMakeHeaders so the headers pick up the new values.

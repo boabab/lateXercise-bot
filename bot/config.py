@@ -58,7 +58,7 @@ class Settings:
         announce_picks: Whether ``/pick`` posts a public confirmation in the thread.
             Defaults to ``True``.
         group_number: Optional default for the group number (``\\ExerciseGroup``) and the
-            PDF filename. ``None`` when unset. Overridden per-guild by ``/konfig``.
+            PDF filename. ``None`` when unset. Overridden per-guild by ``/config``.
         course: Optional default for the course header (``\\exerciseCourse``).
         tutorium: Optional default for the tutorium header (``\\exerciseGroup``).
         authors: Optional default author list, ``;``-separated (``\\exerciseAuthors``).
@@ -72,7 +72,7 @@ class Settings:
     tex_cmd: str | None  # None when unset/blank
     downscale_max_px: int | None  # None when unset/blank/<=0 (feature disabled)
     announce_picks: bool  # default True
-    # Optional header defaults (fallbacks below per-guild /konfig overrides). None = unset.
+    # Optional header defaults (fallbacks below per-guild /config overrides). None = unset.
     group_number: str | None = None
     course: str | None = None
     tutorium: str | None = None
@@ -280,7 +280,7 @@ def load_settings(env_path: str | Path = ".env") -> Settings:
     )
 
     # --- optional: header defaults (group/course/tutorium/authors) ----------------
-    # Blank/unset -> None (fall back to exercise.sty). Per-guild /konfig overrides win
+    # Blank/unset -> None (fall back to exercise.sty). Per-guild /config overrides win
     # over these at build time. Stored as raw strings; AUTHORS is ';'-separated.
     group_number = _get_clean("GROUP_NUMBER")
     course = _get_clean("COURSE")

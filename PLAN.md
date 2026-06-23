@@ -2,9 +2,9 @@
 
 ## Context
 
-A study group (e.g. Gruppe **000**, Tutorium 00, a course like *Mein Kurs SoSe 2026*) hand-writes exercise
+A study group (e.g. Group **000**, Tutorial 00, a course like *My Course 2026*) hand-writes exercise
 solutions, photographs them, and assembles them into a LaTeX PDF submitted as
-`Gruppe_000_Blatt_YY.pdf`. Today that assembly is manual. This bot automates the
+`Group_000_Sheet_YY.pdf`. Today that assembly is manual. This bot automates the
 collect → decide → build → submit loop inside one Discord channel.
 
 The LaTeX project already exists at `latex-project/` (sheets `ex1/`…`ex5/` plus
@@ -13,8 +13,8 @@ drops new `ex<NN>/` folders and a generated `.tex` into the project and compiles
 
 ## User-facing workflow
 
-1. **`/blatt <sheet> <num_exercises>`** — e.g. `/blatt 6 3`. Creates `num_exercises`
-   public threads in the channel named `Blatt 06 · Aufgabe 1 … 3` and posts a hub
+1. **`/sheet <sheet> <num_exercises>`** — e.g. `/sheet 6 3`. Creates `num_exercises`
+   public threads in the channel named `Sheet 06 · Exercise 1 … 3` and posts a hub
    message linking them. Everyone uploads candidate solution photos into the relevant
    exercise thread and discusses there.
 2. **`/pick`** — run *inside* an exercise thread. Assemble the exercise **part by part**:
@@ -26,7 +26,7 @@ drops new `ex<NN>/` folders and a generated `.tex` into the project and compiles
 3. **`/build <sheet>`** — e.g. `/build 6`. Gathers each exercise thread's picked
    parts/images in order, generates `ex06/ex06.tex` (with `\paragraph{(a)}` labels +
    figures), sets `\setExerciseSheet{06}`, compiles from the project root, and posts
-   **`Gruppe_000_Blatt_06.pdf`** into the channel as the reply.
+   **`Group_000_Sheet_06.pdf`** into the channel as the reply.
 
 ## The sub-part model (core data shape)
 
@@ -45,11 +45,11 @@ exercise; one photo per part (`ext2_q2a` + `ext2_q2b`); a photo spanning parts
 | Decision | Choice |
 |---|---|
 | Language / lib | **Python + discord.py 2.x** (app commands / `discord.ui`) |
-| Image → exercise mapping | **One thread per exercise** — the thread *is* the Aufgabe, no tagging |
+| Image → exercise mapping | **One thread per exercise** — the thread *is* the Exercise, no tagging |
 | Winner selection | **Explicit `/pick`**, part-by-part, multiple winners allowed |
 | Sub-part model | Exercise = ordered list of parts; part = optional label + 1+ ordered images |
-| Image rendering | `\section*{Aufgabe N}`, then per labelled part `\paragraph{(a)}` + stacked figure(s) |
-| Exercise count | **Given at creation** (`/blatt 6 3`) |
+| Image rendering | `\section*{Exercise N}`, then per labelled part `\paragraph{(a)}` + stacked figure(s) |
+| Exercise count | **Given at creation** (`/sheet 6 3`) |
 | Sheet number | Set at thread creation; zero-padded (`6` → `06`) |
 | Runtime | **Portable** macOS (MacTeX) / Linux (TeX Live) — binaries resolved from `PATH` |
 
@@ -62,7 +62,7 @@ bot/
   latex.py         # .tex generation + compile + log parsing (framework-free)
   images.py        # attachment download, format validation, naming, downscale
   ui.py            # discord.ui pick widgets (part-by-part builder)
-  cogs/exercises.py# /blatt, /pick, /build app commands
+  cogs/exercises.py# /sheet, /pick, /build app commands
 bot.py             # entrypoint: client, load cog, guild-scoped sync, run
 requirements.txt
 .env.example
@@ -123,7 +123,7 @@ Enforce the single-channel restriction with a hardcoded `ALLOWED_CHANNEL_ID` gua
 \exerciseMakeHeaders
 
 \begin{document}
-\section*{Aufgabe 1}
+\section*{Exercise 1}
 
 \paragraph{(a)}
 \begin{figure}[!htb]
@@ -145,7 +145,7 @@ Enforce the single-channel restriction with a hardcoded `ALLOWED_CHANNEL_ID` gua
   `\paragraph{(a) (b)}` for a combined photo) **only when the part has a label**; an
   unlabelled whole-exercise part is just the bare figure(s), like `ex1`. Multiple images
   in one part = multiple stacked `figure` blocks under that one `\paragraph`. `\newpage`
-  after each Aufgabe (last one omitted).
+  after each Exercise (last one omitted).
 - `\includegraphics` paths are **root-relative** (`ex06/...`) — same convention as
   `ex1/robin/...`. Images saved to `latex-project/ex06/aufgabe{N}_{label}_{k}.{ext}`
   (label sanitized to ASCII: `aufgabe1_a_1.png`, `aufgabe1_ab_1.jpeg`, or
@@ -157,11 +157,11 @@ Resolve compiler via `shutil.which`. `pdflatex` does **not** auto-use `\Exercise
 so force the output name with `-jobname`:
 ```
 latexmk -pdf -interaction=nonstopmode -halt-on-error \
-        -jobname=Gruppe_000_Blatt_06 ex06/ex06.tex        # preferred (auto multi-pass)
-# fallback: pdflatex -jobname=Gruppe_000_Blatt_06 ex06/ex06.tex   (run twice for hyperref/headers)
+        -jobname=Group_000_Sheet_06 ex06/ex06.tex        # preferred (auto multi-pass)
+# fallback: pdflatex -jobname=Group_000_Sheet_06 ex06/ex06.tex   (run twice for hyperref/headers)
 ```
 Run via `asyncio.create_subprocess_exec` (never `shell=True` — the path has a space),
-~120 s timeout. On success post `Gruppe_000_Blatt_06.pdf`; on failure parse the `.log`
+~120 s timeout. On success post `Group_000_Sheet_06.pdf`; on failure parse the `.log`
 (`^!` lines + tail) and post a trimmed excerpt.
 
 > Note: generated folders are zero-padded `ex06/` while the legacy hand-made ones are
@@ -186,7 +186,7 @@ Run via `asyncio.create_subprocess_exec` (never `shell=True` — the path has a 
   up, add `pillow-heif` and convert to JPEG — small, isolated change in `images.py`.
 - **Large photos / Discord 8 MB upload cap** → optional Pillow downscale
   (`DOWNSCALE_MAX_PX`, longest side ~2000px) before placing; catch 413 and inform.
-- **Duplicate `/blatt`** for a sheet → refused (PK guard), points to existing threads.
+- **Duplicate `/sheet`** for a sheet → refused (PK guard), points to existing threads.
 - **LaTeX not installed** → `/build` preflight aborts early with install hints.
 - **Wrong channel/thread** → ephemeral refusal via the channel/thread guards.
 
@@ -223,14 +223,14 @@ OFF** → OAuth2 URL with scopes `bot`+`applications.commands` and the permissio
 ## Verification (end to end)
 
 1. Invite the bot to a test guild/channel; `python bot.py` and confirm commands appear.
-2. `/blatt 6 2` → two threads + hub message created; rows in `threads`.
+2. `/sheet 6 2` → two threads + hub message created; rows in `threads`.
 3. Upload several photos in a thread (e.g. one for part a, two pages for part b);
    `/pick` and map `a: <n>` / `b: <n>, <m>`; confirm the preview and save.
-4. `/build 6` → bot posts `Gruppe_000_Blatt_06.pdf`; open it and check headers
-   ("Blatt 06"), `(a)`/`(b)` labels above the right images, correct part/page order,
-   page breaks between Aufgaben.
+4. `/build 6` → bot posts `Group_000_Sheet_06.pdf`; open it and check headers
+   ("Sheet 06"), `(a)`/`(b)` labels above the right images, correct part/page order,
+   page breaks between Exercisen.
 5. Failure paths: `/build` with a missing pick (aborts), an HEIC upload (rejected),
-   `/blatt 6 2` again (refused), a command in another channel (refused), a `/pick` spec
+   `/sheet 6 2` again (refused), a command in another channel (refused), a `/pick` spec
    referencing a non-existent image number (validation error).
 6. Unit-test `latex.py` (part-list → `.tex`, including combined/unlabelled parts) and
    `store.py` (selection replace + ordered read) without Discord.

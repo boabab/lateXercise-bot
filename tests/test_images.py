@@ -110,18 +110,18 @@ class TestExtForFormat:
 
 class TestTargetFilename:
     def test_labelled_single_letter(self):
-        assert target_filename(1, "a", 1, "png") == "aufgabe1_a_1.png"
+        assert target_filename(1, "a", 1, "png") == "exercise1_a_1.png"
 
     def test_labelled_combined(self):
         # "a b" -> fragment "ab"
-        assert target_filename(1, "a b", 1, "jpeg") == "aufgabe1_ab_1.jpeg"
+        assert target_filename(1, "a b", 1, "jpeg") == "exercise1_ab_1.jpeg"
 
     def test_unlabelled_whole_exercise(self):
         # Empty label -> no fragment segment.
-        assert target_filename(2, "", 1, "png") == "aufgabe2_1.png"
+        assert target_filename(2, "", 1, "png") == "exercise2_1.png"
 
     def test_page_index_used(self):
-        assert target_filename(3, "b", 2, "png") == "aufgabe3_b_2.png"
+        assert target_filename(3, "b", 2, "png") == "exercise3_b_2.png"
 
     def test_exercise_index_used(self):
-        assert target_filename(10, "", 1, "pdf") == "aufgabe10_1.pdf"
+        assert target_filename(10, "", 1, "pdf") == "exercise10_1.pdf"

@@ -206,7 +206,7 @@ def test_parse_then_merge_then_preview_shows_combined_label() -> None:
     """The user-visible preview after merging shows ``(a) (b) (c)`` for a shared photo."""
     parsed = parse_pick_spec("a: 2\nb: 2\nc: 2", num_candidates=7)
     merged = merge_consecutive_parts(parsed)
-    assert preview_text(merged) == "Teil (a) (b) (c): #2"
+    assert preview_text(merged) == "Part (a) (b) (c): #2"
 
 
 def test_parse_then_merge_preserves_interruption_in_preview() -> None:
@@ -214,5 +214,5 @@ def test_parse_then_merge_preserves_interruption_in_preview() -> None:
     parsed = parse_pick_spec("a: 2\nb: 2\nc: 7\nd: 2", num_candidates=7)
     merged = merge_consecutive_parts(parsed)
     assert preview_text(merged) == (
-        "Teil (a) (b): #2 · Teil (c): #7 · Teil (d): #2"
+        "Part (a) (b): #2 · Part (c): #7 · Part (d): #2"
     )

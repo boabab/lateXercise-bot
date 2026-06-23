@@ -5,7 +5,7 @@ channel is an independent *submission group* with its own sheets, picks, and hea
 (Discord channel IDs are globally unique snowflakes, so the channel id alone is a sufficient
 key; the parent guild is not stored.) It holds four kinds of data:
 
-* ``sheets``         — one row per ``(channel_id, sheet)`` exercise sheet created via ``/blatt``.
+* ``sheets``         — one row per ``(channel_id, sheet)`` exercise sheet created via ``/sheet``.
 * ``threads``        — the *mapping* from an exercise index to its Discord thread, written at
                        creation so ``/build`` never has to parse (user-renamable) thread names.
 * ``selections``     — one row per *image*, grouped into ordered parts, written by ``/pick``.
@@ -110,11 +110,11 @@ class Part:
 
 @dataclass
 class ChannelConfig:
-    """Per-channel overrides for the LaTeX header fields, set via ``/konfig``.
+    """Per-channel overrides for the LaTeX header fields, set via ``/config``.
 
     Every field is optional; ``None`` means "no override — fall back to the ``.env``
     default, then to ``exercise.sty``". ``authors`` is stored as a single string with
-    entries separated by ``;`` (as typed in ``/konfig``); the cog splits it into lines.
+    entries separated by ``;`` (as typed in ``/config``); the cog splits it into lines.
     """
 
     group_number: str | None = None
@@ -350,7 +350,7 @@ class Store:
         """Insert a new sheet row.
 
         Returns ``True`` on insert, ``False`` if a row with the same ``(channel_id, sheet)``
-        primary key already exists (the duplicate-``/blatt`` guard). The IntegrityError raised
+        primary key already exists (the duplicate-``/sheet`` guard). The IntegrityError raised
         by the PK conflict is caught so callers get a simple boolean.
         """
         conn = self._connection
@@ -635,7 +635,7 @@ class Store:
 
         conn = self._connection
         async with self._write_lock:
-            # Read current row inside the lock so concurrent /konfig calls don't clobber.
+            # Read current row inside the lock so concurrent /config calls don't clobber.
             async with conn.execute(
                 "SELECT group_number, course, tutorium, authors "
                 "FROM channel_config WHERE channel_id = ?;",

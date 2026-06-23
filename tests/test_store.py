@@ -164,16 +164,16 @@ def test_add_thread_and_get_threads_ordered_by_exercise_index(tmp_path: Path) ->
         await store.create_sheet(CHANNEL, sheet=6, num_exercises=3)
 
         # Insert deliberately out of order (3, 1, 2) to prove the ORDER BY.
-        await store.add_thread(CHANNEL, 6, exercise_index=3, thread_id=3003, thread_name="Aufgabe 3")
-        await store.add_thread(CHANNEL, 6, exercise_index=1, thread_id=1001, thread_name="Aufgabe 1")
-        await store.add_thread(CHANNEL, 6, exercise_index=2, thread_id=2002, thread_name="Aufgabe 2")
+        await store.add_thread(CHANNEL, 6, exercise_index=3, thread_id=3003, thread_name="Exercise 3")
+        await store.add_thread(CHANNEL, 6, exercise_index=1, thread_id=1001, thread_name="Exercise 1")
+        await store.add_thread(CHANNEL, 6, exercise_index=2, thread_id=2002, thread_name="Exercise 2")
 
         threads = await store.get_threads(CHANNEL, 6)
         assert [t.exercise_index for t in threads] == [1, 2, 3]
         assert [t.thread_id for t in threads] == [1001, 2002, 3003]
         assert all(isinstance(t, ThreadRow) for t in threads)
         # Spot-check a fully-populated row.
-        assert threads[0].thread_name == "Aufgabe 1"
+        assert threads[0].thread_name == "Exercise 1"
         assert threads[0].channel_id == CHANNEL
         assert threads[0].sheet == 6
 
@@ -575,7 +575,7 @@ def _build_v0_database(db_path: Path, guild_id: int) -> None:
         conn.execute(
             "INSERT INTO threads (guild_id, sheet, exercise_index, thread_id, thread_name) "
             "VALUES (?, ?, ?, ?, ?);",
-            (guild_id, 6, 1, 700_700, "Aufgabe 1"),
+            (guild_id, 6, 1, 700_700, "Exercise 1"),
         )
         conn.execute(
             "INSERT INTO selections (guild_id, sheet, exercise_index, part_index, part_label, "
@@ -624,7 +624,7 @@ def test_migrates_v0_guild_keyed_db_to_channel_id(tmp_path: Path) -> None:
             assert thread is not None
             assert thread.channel_id == legacy_channel
             assert (thread.sheet, thread.exercise_index) == (6, 1)
-            assert thread.thread_name == "Aufgabe 1"
+            assert thread.thread_name == "Exercise 1"
 
             selection = await store.get_selection(legacy_channel, 6, 1)
             assert [p.label for p in selection] == ["a"]

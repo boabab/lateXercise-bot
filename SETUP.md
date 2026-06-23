@@ -108,11 +108,11 @@ commands appear in your server within a few seconds. Run `/help` in the channel 
 workflow. Stop the bot with Ctrl-C.
 
 ### Running several groups
-Each allowed channel is an independent submission group with its own `/blatt` sheets, `/pick`
-selections, and `/konfig` config. To run more than one group, put each group's channel id in
-`ALLOWED_CHANNEL_IDS` (e.g. `ALLOWED_CHANNEL_IDS=111,222,333`) and run `/konfig` *in each
+Each allowed channel is an independent submission group with its own `/sheet` sheets, `/pick`
+selections, and `/config` config. To run more than one group, put each group's channel id in
+`ALLOWED_CHANNEL_IDS` (e.g. `ALLOWED_CHANNEL_IDS=111,222,333`) and run `/config` *in each
 channel* to set that group's number, course, tutorial, and authors. Builds are serialized and
-PDFs are named per group (`Gruppe_<group>_Blatt_NN.pdf`), so two channels building the same
+PDFs are named per group (`Group_<group>_Sheet_NN.pdf`), so two channels building the same
 sheet number won't collide. If you're upgrading from a single-channel setup, the bot
 auto-migrates your existing database to the multi-channel schema on first startup — no action
 needed.
@@ -122,28 +122,28 @@ needed.
 ## 6. Customize it for your group
 
 You do **not** edit any code or `exercise.sty`. There are two ways to set the group number,
-course, tutorial label, and author list (precedence: `/konfig` > `.env` > `exercise.sty`):
+course, tutorial label, and author list (precedence: `/config` > `.env` > `exercise.sty`):
 
-### Live, from Discord — `/konfig`
+### Live, from Discord — `/config`
 Run it **in the channel** you want to configure (each channel keeps its own values, so groups
 in different channels can have different numbers and names):
 ```
-/konfig group:142 course:"Mein Kurs SoSe 2026" tutorium:"Tutorium 12" authors:"Anna Muster, 111111; Ben Test, 222222"
+/config group:142 course:"My Course 2026" tutorial:"Tutorial 12" authors:"Anna Sample, 111111; Ben Example, 222222"
 ```
-- `group` ends up in the header **and** the filename → `Gruppe_142_Blatt_06.pdf`.
+- `group` ends up in the header **and** the filename → `Group_142_Sheet_06.pdf`.
 - `authors` is one string with entries separated by `;` — each becomes its own line.
-- Run `/konfig` with no options to see the current values; `/konfig reset:true` clears them.
+- Run `/config` with no options to see the current values; `/config reset:true` clears them.
 - Each option is independent — set only what you want to change.
 
 ### Or as defaults in `.env`
 ```
 GROUP_NUMBER=142
-COURSE=Mein Kurs SoSe 2026
-TUTORIUM=Tutorium 12
-AUTHORS=Anna Muster, 111111; Ben Test, 222222
+COURSE=My Course 2026
+TUTORIUM=Tutorial 12
+AUTHORS=Anna Sample, 111111; Ben Example, 222222
 ```
-`/konfig` values (stored per channel in the database) override these at build time. The `.env`
-defaults are global — they apply to every channel that hasn't set its own `/konfig` value.
+`/config` values (stored per channel in the database) override these at build time. The `.env`
+defaults are global — they apply to every channel that hasn't set its own `/config` value.
 
 If you set none of them, the values baked into `latex-project/exercise.sty` are used. (The
 bot already works around a quirk in that file, so `/build` compiles cleanly out of the box.)
@@ -194,7 +194,7 @@ binaries — either fix `Environment=PATH=…` above, or set `TEX_CMD=/usr/bin/l
 | A command is refused | You're not in one of the `ALLOWED_CHANNEL_IDS` channels (or `/pick` outside a bot thread). |
 | `/build` says "No LaTeX compiler found" | LaTeX isn't installed or isn't on the service `PATH`; install it (step 2) or set `TEX_CMD`. |
 | HEIC/WEBP photo rejected | Re-upload as PNG or JPEG (iPhones can shoot "Most Compatible" JPEG). |
-| Reset everything | Stop the bot and delete `data/latexercise.sqlite3*` to wipe all sheets, picks, and `/konfig` config. |
+| Reset everything | Stop the bot and delete `data/latexercise.sqlite3*` to wipe all sheets, picks, and `/config` config. |
 
-For the day-to-day workflow (`/blatt` → upload → `/pick` → `/build`), see [README.md](README.md)
+For the day-to-day workflow (`/sheet` → upload → `/pick` → `/build`), see [README.md](README.md)
 or run `/help` in Discord.

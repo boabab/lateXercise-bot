@@ -1,14 +1,16 @@
 # lateXercise-bot
 
+![lateXercise-bot — a study group solving exercise sheets together in Discord threads, with the bot building the LaTeX PDF](assets/thumbnail.png)
+
 Automates the **collect → pick → build → submit** loop for a study group's
 exercise sheets, inside Discord. Group members drop candidate
 solution photos into per-exercise threads; the bot assembles the chosen images
 into the existing LaTeX project and posts a ready-to-submit
-`Gruppe_000_Blatt_YY.pdf`.
+`Group_000_Sheet_YY.pdf`.
 
 You can run **several submission groups at once** — list one channel per group in
-`ALLOWED_CHANNEL_IDS`. Each channel is fully independent: its own `/blatt` sheets,
-`/pick` selections, and per-channel `/konfig` (group number, course, tutorial, authors),
+`ALLOWED_CHANNEL_IDS`. Each channel is fully independent: its own `/sheet` sheets,
+`/pick` selections, and per-channel `/config` (group number, course, tutorial, authors),
 so different channels can submit under different group numbers and names.
 
 See [PLAN.md](PLAN.md) for the full design rationale. **Setting this up for your own study
@@ -20,17 +22,17 @@ number, course, tutorial, and names with no code edits.
 | Command | Where | What it does |
 |---|---|---|
 | `/help` | anywhere | Shows the workflow and every command in Discord. |
-| `/blatt <sheet> <num_exercises>` | an allowed channel | Creates `num_exercises` public threads (`Blatt 06 · Aufgabe 1 … N`) and posts a hub message linking them. Sheets are scoped to the channel they're created in. |
+| `/sheet <sheet> <num_exercises>` | an allowed channel | Creates `num_exercises` public threads (`Sheet 06 · Exercise 1 … N`) and posts a hub message linking them. Sheets are scoped to the channel they're created in. |
 | `/pick` | inside an exercise thread | Lists the thread's uploaded images as a numbered gallery; you map sub-parts to image numbers (e.g. `a: 2`, `b: 5, 6`, `a b: 3`, or `: 2` for a whole-exercise photo). Re-running replaces that exercise's selection. The same image number on **consecutive** parts (`a: 2`, `b: 2`) is auto-combined into one `(a) (b)` figure instead of repeating the image; if the run is interrupted (`a: 2`, `b: 2`, `c: 7`, `d: 2`) the image is repeated for the later part. |
-| `/build <sheet> [skip_missing]` | an allowed channel | Re-fetches each picked image, generates `ex<NN>/ex<NN>.tex`, compiles from the project root, and posts `Gruppe_<group>_Blatt_<NN>.pdf` into the channel. |
-| `/konfig [group] [course] [tutorium] [authors] [reset]` | an allowed channel | View or set the **per-channel** header values (group number, course, tutorial, authors) used in the PDF header and filename. Each channel keeps its own values, so different groups can differ. No code/`exercise.sty` edits needed. |
+| `/build <sheet> [skip_missing]` | an allowed channel | Re-fetches each picked image, generates `ex<NN>/ex<NN>.tex`, compiles from the project root, and posts `Group_<group>_Sheet_<NN>.pdf` into the channel. |
+| `/config [group] [course] [tutorial] [authors] [reset]` | an allowed channel | View or set the **per-channel** header values (group number, course, tutorial, authors) used in the PDF header and filename. Each channel keeps its own values, so different groups can differ. No code/`exercise.sty` edits needed. |
 
 ## Customization (header & filename)
 
 The group number, course, tutorial label, and author list can be set **per channel** without
-editing `exercise.sty` — either live via `/konfig` (run it in a channel to view/set that
+editing `exercise.sty` — either live via `/config` (run it in a channel to view/set that
 channel's values) or as global defaults in `.env` (`GROUP_NUMBER`, `COURSE`, `TUTORIUM`,
-`AUTHORS`). Precedence: `/konfig` (per channel) > `.env` (global) > `exercise.sty`. The bot
+`AUTHORS`). Precedence: `/config` (per channel) > `.env` (global) > `exercise.sty`. The bot
 injects the chosen values into the *generated* `.tex` via `\renewcommand`, so the shared style
 file is never touched. See [SETUP.md](SETUP.md#6-customize-it-for-your-group).
 
@@ -39,12 +41,12 @@ file is never touched. See [SETUP.md](SETUP.md#6-customize-it-for-your-group).
 The LaTeX project lives in [`latex-project/`](latex-project/) (with `exercise.sty`
 and the hand-made `ex1/`…`ex5/`). The bot **never edits `exercise.sty`**. It only writes
 its own zero-padded `ex06/`, `ex07/`, … folders and a generated `.tex`, then compiles with
-`-jobname=Gruppe_<group>_Blatt_<NN>` so the output filename is correct (the group number comes
-from `/konfig`/`.env` if set, otherwise `\ExerciseGroup` in `exercise.sty`). Any per-channel
+`-jobname=Group_<group>_Sheet_<NN>` so the output filename is correct (the group number comes
+from `/config`/`.env` if set, otherwise `\ExerciseGroup` in `exercise.sty`). Any per-channel
 header overrides are injected into the generated `.tex` via `\renewcommand`. Generated `ex<NN>/`
 folders are gitignored; the legacy single-digit `ex1`…`ex5` are not touched.
 
-Because each group's PDF is named per group (`Gruppe_<group>_Blatt_NN.pdf`), the outputs of two
+Because each group's PDF is named per group (`Group_<group>_Sheet_NN.pdf`), the outputs of two
 channels building the same sheet number never collide, and the bot serializes the compile step
 so concurrent builds can't corrupt each other's output.
 
@@ -120,7 +122,7 @@ bot/
   latex.py          framework-free .tex generation + compile + log parsing
   images.py         attachment download, magic-byte format check, naming, downscale
   ui.py             discord.ui pick widgets + the pure pick-spec parser
-  cogs/exercises.py /help, /konfig, /blatt, /pick, /build app commands
+  cogs/exercises.py /help, /config, /sheet, /pick, /build app commands
 tests/              pytest: latex, store (+migration), config, pick-spec parser, image helpers
 ```
 

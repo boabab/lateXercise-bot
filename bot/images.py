@@ -159,7 +159,7 @@ def target_filename(exercise_index: int, label: str, page: int, ext: str) -> str
       e.g. ``aufgabe1_1.png``.
 
     Args:
-        exercise_index: 1-based Aufgabe number.
+        exercise_index: 1-based Exercise number.
         label: canonical raw label (``""``, ``"a"``, ``"a b"``).
         page: 1-based page order within the part.
         ext: file extension without a leading dot (typically from
@@ -167,8 +167,8 @@ def target_filename(exercise_index: int, label: str, page: int, ext: str) -> str
     """
     frag = label_to_filename_fragment(label)
     if frag:
-        return f"aufgabe{exercise_index}_{frag}_{page}.{ext}"
-    return f"aufgabe{exercise_index}_{page}.{ext}"
+        return f"exercise{exercise_index}_{frag}_{page}.{ext}"
+    return f"exercise{exercise_index}_{page}.{ext}"
 
 
 @dataclass
@@ -241,7 +241,7 @@ async def download_and_place(
             responsible for wiping it before a build.
         rel_dir: POSIX directory fragment relative to the project root used in
             ``rel_path`` (e.g. ``"ex06"``).
-        exercise_index: 1-based Aufgabe number.
+        exercise_index: 1-based Exercise number.
         label: canonical raw part label (``""``, ``"a"``, ``"a b"``).
         page: 1-based page order within the part.
         downscale_max_px: longest-side cap in pixels, or ``None``/``<=0`` to

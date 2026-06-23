@@ -17,13 +17,13 @@ Flow recap (driven by the `/pick` cog):
     * The cog gathers candidate images from the thread, numbers them, and shows an
       ephemeral message: a numbered text list of *all* candidates (up to 25) plus a
       gallery of up to 10 thumbnail embeds (Discord's hard cap is 10 embeds/message).
-    * The user clicks "Teile eingeben", which opens `PickModal` — a single paragraph
+    * The user clicks "Enter parts", which opens `PickModal` — a single paragraph
       `TextInput`. On submit the text is run through `parse_pick_spec`.
     * On a `PickSpecError` the message is shown ephemerally and the user can retry.
     * On success the parse is stored on the `PickView`, and the ephemeral message is
-      edited to show `preview_text` plus "Bestätigen"/"Abbrechen" buttons.
-    * "Bestätigen" awaits the cog-supplied ``on_confirm(parsed)`` callback (which
-      persists the selection) and then disables the view. "Abbrechen" just disables it.
+      edited to show `preview_text` plus "Confirm"/"Cancel" buttons.
+    * "Confirm" awaits the cog-supplied ``on_confirm(parsed)`` callback (which
+      persists the selection) and then disables the view. "Cancel" just disables it.
 
 Discord cap note: a message may carry at most 10 embeds, but `/pick` may surface up to
 25 candidates. We therefore render the 10 *most recent* candidates as thumbnail embeds
@@ -70,7 +70,7 @@ class ParsedPart:
 class PickSpecError(ValueError):
     """Raised when the modal spec is invalid.
 
-    Carries a human-readable, user-facing message (German, to match the bot's
+    Carries a human-readable, user-facing message (English, matching the bot's
     surface language) that is shown ephemerally so the user can correct and retry.
     """
 
@@ -113,7 +113,7 @@ def parse_pick_spec(text: str, num_candidates: int) -> list[ParsedPart]:
     candidate numbers, separated by commas and/or whitespace. A blank label means the
     whole exercise.
 
-    Validation — raise `PickSpecError` with a clear, user-facing German message on any
+    Validation — raise `PickSpecError` with a clear, user-facing message on any
     of these violations:
         * at least one part total (the spec must be non-empty);
         * every non-blank line must contain a ``:``;
@@ -146,9 +146,9 @@ def parse_pick_spec(text: str, num_candidates: int) -> list[ParsedPart]:
 
         if ":" not in line:
             raise PickSpecError(
-                f"Zeile {lineno} hat keinen Doppelpunkt. Erwartet wird "
-                f"`Teil: Nummer(n)`, z.B. `a: 2` oder `: 2` (ganze Aufgabe). "
-                f"Betroffene Zeile: `{line}`"
+                f"Line {lineno} has no colon. Expected "
+                f"`part: number(s)`, e.g. `a: 2` or `: 2` (whole exercise). "
+                f"Affected line: `{line}`"
             )
 
         label_part, _, numbers_part = line.partition(":")
@@ -158,10 +158,10 @@ def parse_pick_spec(text: str, num_candidates: int) -> list[ParsedPart]:
         # keep non-empty tokens.
         raw_numbers = [tok for tok in re.split(r"[\s,]+", numbers_part.strip()) if tok]
         if not raw_numbers:
-            shown = label if label else "(ganze Aufgabe)"
+            shown = label if label else "(whole exercise)"
             raise PickSpecError(
-                f"Teil `{shown}` (Zeile {lineno}) enthaelt keine Nummer. "
-                f"Jeder Teil braucht mindestens eine Bild-Nummer, z.B. `a: 2`."
+                f"Part `{shown}` (line {lineno}) has no number. "
+                f"Each part needs at least one image number, e.g. `a: 2`."
             )
 
         numbers: list[int] = []
@@ -170,13 +170,13 @@ def parse_pick_spec(text: str, num_candidates: int) -> list[ParsedPart]:
                 value = int(tok)
             except ValueError:
                 raise PickSpecError(
-                    f"`{tok}` (Zeile {lineno}) ist keine ganze Zahl. "
-                    f"Bitte nur Bild-Nummern angeben."
+                    f"`{tok}` (line {lineno}) is not a whole number. "
+                    f"Please give image numbers only."
                 )
             if value < 1 or value > num_candidates:
                 raise PickSpecError(
-                    f"Bild-Nummer {value} (Zeile {lineno}) liegt ausserhalb des "
-                    f"gueltigen Bereichs 1..{num_candidates}."
+                    f"Image number {value} (line {lineno}) is out of the "
+                    f"valid range 1..{num_candidates}."
                 )
             numbers.append(value)
 
@@ -184,8 +184,8 @@ def parse_pick_spec(text: str, num_candidates: int) -> list[ParsedPart]:
 
     if not parts:
         raise PickSpecError(
-            "Keine Teile angegeben. Schreibe mindestens eine Zeile, z.B. `a: 2` "
-            "oder `: 2` fuer die ganze Aufgabe."
+            "No parts given. Write at least one line, e.g. `a: 2` "
+            "or `: 2` for the whole exercise."
         )
 
     return parts
@@ -335,7 +335,7 @@ def build_candidate_listing(candidates: list[Candidate]) -> str:
         thread has no candidate images.
     """
     if not candidates:
-        return "_Keine Bild-Kandidaten in diesem Thread gefunden._"
+        return "_No image candidates found in this thread._"
     return "\n".join(
         f"#{cand.number} · {cand.filename}"
         for cand in candidates[:MAX_CANDIDATES]
@@ -347,7 +347,7 @@ def preview_text(parsed: list[ParsedPart]) -> str:
 
     Format: parts joined by `` · ``. A labelled part renders as
     ``Teil (a): #2`` or ``Teil (a) (b): #5, #6``; an unlabelled (whole-exercise) part
-    renders as ``Ganze Aufgabe: #2``.
+    renders as ``Whole exercise: #2``.
 
     Args:
         parsed: The parsed parts (typically from `parse_pick_spec`).
@@ -361,9 +361,9 @@ def preview_text(parsed: list[ParsedPart]) -> str:
         if part.label:
             # "a" -> "(a)", "a b" -> "(a) (b)" — wrap each token in parens.
             label_display = " ".join(f"({tok})" for tok in part.label.split())
-            chunks.append(f"Teil {label_display}: {numbers}")
+            chunks.append(f"Part {label_display}: {numbers}")
         else:
-            chunks.append(f"Ganze Aufgabe: {numbers}")
+            chunks.append(f"Whole exercise: {numbers}")
     return " · ".join(chunks)
 
 
@@ -377,15 +377,15 @@ class PickModal(discord.ui.Modal):
 
     # Paragraph (multi-line) input. One line per part, e.g. "a: 2" / "b: 5, 6" / ": 2".
     spec: discord.ui.TextInput[PickModal] = discord.ui.TextInput(
-        label="Teile (eine Zeile pro Teil)",
+        label="Parts (one line per part)",
         style=discord.TextStyle.paragraph,
-        placeholder="a: 2\nb: 5, 6\nc: 7\n\n(leeres Label = ganze Aufgabe, z.B. : 2)",
+        placeholder="a: 2\nb: 5, 6\nc: 7\n\n(empty label = whole exercise, e.g. : 2)",
         required=True,
         max_length=2000,
     )
 
     def __init__(self, view: PickView) -> None:
-        super().__init__(title="Teile eingeben")
+        super().__init__(title="Enter parts")
         self._view = view
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
@@ -400,12 +400,12 @@ class PickView(discord.ui.View):
     the cog. The view holds the candidate list, the latest successful parse, and renders
     the appropriate buttons for each stage:
 
-        * Stage 1 (initial): only "Teile eingeben" — opens `PickModal`.
-        * Stage 2 (after a valid parse): "Teile eingeben" (to re-edit) plus "Bestätigen"
-          and "Abbrechen".
+        * Stage 1 (initial): only "Enter parts" — opens `PickModal`.
+        * Stage 2 (after a valid parse): "Enter parts" (to re-edit) plus "Confirm"
+          and "Cancel".
 
-    On "Bestätigen" the view awaits ``on_confirm(parsed)`` (which persists the
-    selection), then disables itself. On "Abbrechen" it simply disables itself. On
+    On "Confirm" the view awaits ``on_confirm(parsed)`` (which persists the
+    selection), then disables itself. On "Cancel" it simply disables itself. On
     timeout it disables all items so stale buttons can't be clicked.
     """
 
@@ -424,18 +424,18 @@ class PickView(discord.ui.View):
         self.parsed: list[ParsedPart] | None = None
         # Track the ephemeral message so on_timeout can disable its components.
         self.message: discord.Message | discord.InteractionMessage | None = None
-        # Start in stage 1: only the "Teile eingeben" entry button is present.
+        # Start in stage 1: only the "Enter parts" entry button is present.
         self._show_entry_only()
 
     # -- internal layout helpers ------------------------------------------------
 
     def _show_entry_only(self) -> None:
-        """Reset the view to stage 1: just the "Teile eingeben" button."""
+        """Reset the view to stage 1: just the "Enter parts" button."""
         self.clear_items()
         self.add_item(self._entry_button())
 
     def _show_confirm_stage(self) -> None:
-        """Switch to stage 2: re-edit entry plus Bestätigen / Abbrechen."""
+        """Switch to stage 2: re-edit entry plus Confirm / Cancel."""
         self.clear_items()
         self.add_item(self._entry_button())
         self.add_item(self._confirm_button())
@@ -443,21 +443,21 @@ class PickView(discord.ui.View):
 
     def _entry_button(self) -> discord.ui.Button[PickView]:
         button: discord.ui.Button[PickView] = discord.ui.Button(
-            label="Teile eingeben", style=discord.ButtonStyle.primary
+            label="Enter parts", style=discord.ButtonStyle.primary
         )
         button.callback = self._on_entry  # type: ignore[assignment]
         return button
 
     def _confirm_button(self) -> discord.ui.Button[PickView]:
         button: discord.ui.Button[PickView] = discord.ui.Button(
-            label="Bestätigen", style=discord.ButtonStyle.success
+            label="Confirm", style=discord.ButtonStyle.success
         )
         button.callback = self._on_confirm_click  # type: ignore[assignment]
         return button
 
     def _cancel_button(self) -> discord.ui.Button[PickView]:
         button: discord.ui.Button[PickView] = discord.ui.Button(
-            label="Abbrechen", style=discord.ButtonStyle.secondary
+            label="Cancel", style=discord.ButtonStyle.secondary
         )
         button.callback = self._on_cancel  # type: ignore[assignment]
         return button
@@ -502,7 +502,7 @@ class PickView(discord.ui.View):
         self.parsed = parsed
         self._show_confirm_stage()
         content = (
-            "**Vorschau** — bitte pruefen und bestaetigen:\n"
+            "**Preview** — please check and confirm:\n"
             f"{preview_text(parsed)}"
         )
         # The modal submission's response edits the underlying ephemeral message.
@@ -517,7 +517,7 @@ class PickView(discord.ui.View):
             # Defensive: confirm should only be reachable after a successful parse.
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "Es liegt keine gueltige Auswahl vor. Bitte zuerst Teile eingeben.",
+                    "There is no valid selection yet. Please enter parts first.",
                     ephemeral=True,
                 )
             return
@@ -527,7 +527,7 @@ class PickView(discord.ui.View):
         try:
             await self._on_confirm(self.parsed)
         except Exception as exc:  # noqa: BLE001 - surface any save failure to the user
-            message = f"Speichern fehlgeschlagen: {exc}"
+            message = f"Saving failed: {exc}"
             if not interaction.response.is_done():
                 await interaction.response.send_message(message, ephemeral=True)
             else:
@@ -537,7 +537,7 @@ class PickView(discord.ui.View):
         self._disable_all()
         self.stop()
         confirmed = (
-            "✅ Auswahl gespeichert:\n" f"{preview_text(self.parsed)}"
+            "✅ Selection saved:\n" f"{preview_text(self.parsed)}"
         )
         if not interaction.response.is_done():
             await interaction.response.edit_message(content=confirmed, view=self)
@@ -550,11 +550,11 @@ class PickView(discord.ui.View):
         self.stop()
         if not interaction.response.is_done():
             await interaction.response.edit_message(
-                content="Abgebrochen. Es wurde nichts gespeichert.", view=self
+                content="Cancelled. Nothing was saved.", view=self
             )
         else:
             await interaction.edit_original_response(
-                content="Abgebrochen. Es wurde nichts gespeichert.", view=self
+                content="Cancelled. Nothing was saved.", view=self
             )
 
     async def on_timeout(self) -> None:

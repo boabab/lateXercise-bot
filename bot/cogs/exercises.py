@@ -1,4 +1,4 @@
-"""Slash-command cog for the lateXercise bot: ``/blatt``, ``/pick``, ``/build``.
+"""Slash-command cog for the lateXercise bot: ``/sheet``, ``/pick``, ``/build``.
 
 This module is the orchestration layer that wires the Discord runtime to the pure
 helper modules (:mod:`bot.config`, :mod:`bot.store`, :mod:`bot.latex`,
@@ -9,14 +9,14 @@ in the framework-free modules so it stays unit-testable.
 
 The three commands implement the documented workflow:
 
-* ``/blatt <sheet> <num_exercises>`` — create one public thread per exercise plus a
+* ``/sheet <sheet> <num_exercises>`` — create one public thread per exercise plus a
   hub message linking them, and record the mapping in the store.
 * ``/pick`` — run *inside* an exercise thread; gather candidate images from the
   thread history, let the user map parts → image numbers via an ephemeral
   :class:`~bot.ui.PickView`, and persist the resulting selection.
 * ``/build <sheet> [skip_missing]`` — gather every exercise's picked images, place
   them under ``<project>/ex<NN>/``, render ``ex<NN>.tex``, compile it to
-  ``Gruppe_<group>_Blatt_<NN>.pdf``, and post the PDF (or a log excerpt on failure).
+  ``Group_<group>_Sheet_<NN>.pdf``, and post the PDF (or a log excerpt on failure).
 
 All commands are guild-scoped (the cog is added and synced to ``GUILD_ID`` by
 ``bot.py``). Every command first runs the :meth:`Exercises._operating_channel` guard so
@@ -93,9 +93,9 @@ _HTTP_REQUEST_ENTITY_TOO_LARGE = 413
 _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     {".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif", ".pdf"}
 )
-# Separator for the ;-delimited author list in /konfig and the AUTHORS env default.
+# Separator for the ;-delimited author list in /config and the AUTHORS env default.
 _AUTHORS_SEP = ";"
-# A group number ends up in the PDF filename (Gruppe_<group>_Blatt_NN.pdf), so it must
+# A group number ends up in the PDF filename (Group_<group>_Sheet_NN.pdf), so it must
 # stay filesystem-safe: letters/digits only, kept short.
 _GROUP_RE = re.compile(r"^[A-Za-z0-9]{1,10}$")
 
@@ -135,7 +135,7 @@ def _is_image_attachment(attachment: discord.Attachment) -> bool:
 
 
 class Exercises(commands.Cog):
-    """Cog exposing the ``/blatt``, ``/pick`` and ``/build`` slash commands.
+    """Cog exposing the ``/sheet``, ``/pick`` and ``/build`` slash commands.
 
     Construct with the live ``bot``, the validated :class:`~bot.config.Settings`, and
     an initialised :class:`~bot.store.Store`. ``bot.py`` adds this cog and copies its
@@ -162,7 +162,7 @@ class Exercises(commands.Cog):
         """Guard + resolver: return the *operating channel id* for this interaction.
 
         Each configured ``ALLOWED_CHANNEL_IDS`` channel is an independent submission group.
-        A command runs either directly in such a channel (``/blatt``, ``/build``, ``/konfig``)
+        A command runs either directly in such a channel (``/sheet``, ``/build``, ``/config``)
         or inside one of its threads (``/pick``). This returns the operating channel id — the
         channel itself, or a thread's ``parent_id`` — which is the key everything is stored
         under. If the interaction is not in any allowed channel (or a thread under one), it
@@ -183,8 +183,8 @@ class Exercises(commands.Cog):
         mentions = ", ".join(f"<#{cid}>" for cid in allowed)
         await self._reply_ephemeral(
             interaction,
-            f"Dieser Befehl ist nur in den Arbeitskanaelen des Bots ({mentions}) "
-            "bzw. deren Threads erlaubt.",
+            f"This command is only allowed in the bot's working channels ({mentions}) "
+            "or their threads.",
         )
         return None
 
@@ -204,9 +204,9 @@ class Exercises(commands.Cog):
             await interaction.response.send_message(content, ephemeral=True)
 
     async def _resolve_overrides(self, channel_id: int) -> HeaderOverrides:
-        """Merge the per-channel ``/konfig`` config over the ``.env`` defaults.
+        """Merge the per-channel ``/config`` config over the ``.env`` defaults.
 
-        Precedence per field: DB override (``/konfig`` for this channel) > ``.env`` default >
+        Precedence per field: DB override (``/config`` for this channel) > ``.env`` default >
         unset (``None`` → ``exercise.sty``'s own default is left in place by ``render_tex``).
         The ``;``-separated author string is split into a list of lines.
         """
@@ -225,7 +225,7 @@ class Exercises(commands.Cog):
 
     @app_commands.command(
         name="help",
-        description="Zeigt, wie der lateXercise-Bot benutzt wird (Ablauf & Befehle).",
+        description="Shows how to use the lateXercise bot (workflow & commands).",
     )
     async def help(self, interaction: discord.Interaction) -> None:
         """Show an ephemeral usage guide describing the full workflow and every command.
@@ -235,105 +235,104 @@ class Exercises(commands.Cog):
         """
         allowed = self.settings.allowed_channel_ids
         channels_str = ", ".join(f"<#{cid}>" for cid in allowed)
-        # Each channel is its own submission group with its own /konfig + sheets.
+        # Each channel is its own submission group with its own /config + sheets.
         channels_line = (
-            f"Gearbeitet wird in {channels_str} und deren Aufgaben-Threads."
+            f"Work happens in {channels_str} and its exercise threads."
             if len(allowed) == 1
             else (
-                f"Gearbeitet wird in den Kanaelen {channels_str} (jeder Kanal ist eine "
-                "eigene Abgabegruppe mit eigener `/konfig`) und deren Aufgaben-Threads."
+                f"Work happens in the channels {channels_str} (each channel is its own "
+                "submission group with its own `/config`) and their exercise threads."
             )
         )
         embed = discord.Embed(
-            title="📄 lateXercise-Bot — Hilfe",
+            title="📄 lateXercise bot — Help",
             description=(
-                "Aus euren Loesungsfotos baut der Bot automatisch die Abgabe-PDF.\n"
+                "The bot turns your solution photos into a ready-to-submit PDF.\n"
                 f"{channels_line}\n\n"
-                "**Ablauf:** `/blatt` → Fotos in die Threads laden → `/pick` → `/build`."
+                "**Workflow:** `/sheet` → upload photos into the threads → `/pick` → `/build`."
             ),
             color=0x00549F,  # RWTH-blue-ish, matching the sheet styling
         )
         embed.add_field(
-            name="1) /blatt <sheet> <num_exercises>",
+            name="1) /sheet <sheet> <num_exercises>",
             value=(
-                "Legt je einen oeffentlichen Thread pro Aufgabe an und postet eine "
-                "Uebersicht. Beispiel: `/blatt 6 3` → Threads *Blatt 06 · Aufgabe 1…3*.\n"
-                "Ladet danach eure Loesungsfotos (PNG/JPEG/PDF) in den passenden "
-                "Aufgaben-Thread und diskutiert dort."
+                "Creates one public thread per exercise and posts an overview. "
+                "Example: `/sheet 6 3` → threads *Sheet 06 · Exercise 1…3*.\n"
+                "Then upload your solution photos (PNG/JPEG/PDF) into the matching "
+                "exercise thread and discuss there."
             ),
             inline=False,
         )
         embed.add_field(
-            name="2) /pick  — im Aufgaben-Thread",
+            name="2) /pick  — in the exercise thread",
             value=(
-                "Waehlt die Gewinnerbilder **Teil fuer Teil**. Klicke **Teile eingeben** "
-                "und schreibe pro Zeile `Teil: Nummer(n)`:\n"
+                "Choose the winning images **part by part**. Click **Enter parts** "
+                "and write `part: number(s)` per line:\n"
                 "```\na: 2\nb: 5, 6\nc: 7\n```\n"
-                "• `: 2` = ganze Aufgabe (ohne Teil-Buchstabe)\n"
-                "• `a b: 3` = ein Foto deckt Teil a **und** b ab\n"
-                "• dieselbe Nummer fuer **aufeinanderfolgende** Teile (`a: 2`, `b: 2`) "
-                "wird automatisch zu `(a) (b)` zusammengefasst — das Bild erscheint nur "
-                "einmal (Unterbrechung => es wird wiederholt)\n"
-                "• mehrere Nummern = mehrere Seiten (Reihenfolge bleibt erhalten)\n"
-                "Erneutes `/pick` ersetzt die bisherige Auswahl der Aufgabe."
+                "• `: 2` = whole exercise (no part letter)\n"
+                "• `a b: 3` = one photo covers part a **and** b\n"
+                "• the same number on **consecutive** parts (`a: 2`, `b: 2`) "
+                "is auto-merged into `(a) (b)` — the image appears only "
+                "once (an interruption => it repeats)\n"
+                "• multiple numbers = multiple pages (order preserved)\n"
+                "Running `/pick` again replaces that exercise's selection."
             ),
             inline=False,
         )
         embed.add_field(
             name="3) /build <sheet> [skip_missing]",
             value=(
-                "Baut die PDF und postet sie in den Kanal. Beispiel: `/build 6` → "
-                "`Gruppe_<Nr>_Blatt_06.pdf`.\n"
-                "Fehlt fuer eine Aufgabe eine Auswahl, bricht der Befehl ab und nennt "
-                "die Luecken — mit `skip_missing: true` werden solche Aufgaben "
-                "uebersprungen."
+                "Builds the PDF and posts it in the channel. Example: `/build 6` → "
+                "`Group_<no>_Sheet_06.pdf`.\n"
+                "If an exercise has no selection, the command aborts and lists the "
+                "gaps — use `skip_missing: true` to skip them."
             ),
             inline=False,
         )
         embed.add_field(
-            name="/konfig  — Kopfzeile & Dateiname anpassen",
+            name="/config  — customise header & filename",
             value=(
-                "Gruppennummer, Kurs, Tutorium und Autorenliste festlegen, z.B.\n"
-                "`/konfig group:123 tutorium:\"Tutorium 12\" "
+                "Set group number, course, tutorial and author list, e.g.\n"
+                "`/config group:123 tutorial:\"Tutorial 12\" "
                 "authors:\"Anna, 111; Ben, 222\"`.\n"
-                "Ohne Argumente zeigt `/konfig` die aktuelle Konfiguration; "
-                "`/konfig reset:true` setzt sie zurueck."
+                "With no arguments `/config` shows the current configuration; "
+                "`/config reset:true` resets it."
             ),
             inline=False,
         )
         embed.add_field(
-            name="Hinweise",
+            name="Notes",
             value=(
-                "• Unterstuetzte Bildformate: **PNG, JPEG, PDF** "
-                "(HEIC/WEBP bitte vorher umwandeln).\n"
-                "• `/blatt` und `/build` laufen **im Arbeitskanal**, "
-                "`/pick` **im Aufgaben-Thread**."
+                "• Supported image formats: **PNG, JPEG, PDF** "
+                "(convert HEIC/WEBP first).\n"
+                "• `/sheet` and `/build` run **in the working channel**, "
+                "`/pick` **in the exercise thread**."
             ),
             inline=False,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
-    # /konfig
+    # /config
     # ------------------------------------------------------------------
 
     @app_commands.command(
-        name="konfig",
-        description="Zeigt/aendert Gruppennummer, Kurs, Tutorium und Autoren der PDF.",
+        name="config",
+        description="Show/change the PDF's group number, course, tutorial and authors.",
     )
     @app_commands.describe(
-        group="Gruppennummer (nur Buchstaben/Ziffern) — erscheint im Dateinamen.",
-        course="Kurs-/Veranstaltungsname fuer die Kopfzeile, z.B. 'Mein Kurs SoSe 2026'.",
-        tutorium="Tutorium/Gruppe fuer die Kopfzeile, z.B. 'Tutorium 12'.",
-        authors="Autoren, mit ';' getrennt, z.B. 'Anna Muster, 111111; Ben Test, 222222'.",
-        reset="Alle gespeicherten Werte loeschen (zurueck zu .env / exercise.sty).",
+        group="Group number (letters/digits only) — appears in the filename.",
+        course="Course / lecture name for the header, e.g. 'My Course 2026'.",
+        tutorial="Tutorial / group label for the header, e.g. 'Tutorial 12'.",
+        authors="Authors, separated by ';', e.g. 'Anna Sample, 111111; Ben Example, 222222'.",
+        reset="Delete all stored values (back to .env / exercise.sty).",
     )
-    async def konfig(
+    async def config(
         self,
         interaction: discord.Interaction,
         group: str | None = None,
         course: str | None = None,
-        tutorium: str | None = None,
+        tutorial: str | None = None,
         authors: str | None = None,
         reset: bool = False,
     ) -> None:
@@ -341,7 +340,7 @@ class Exercises(commands.Cog):
 
         Each operating channel is its own submission group with its own configuration. With
         no arguments it shows the current effective configuration for the channel it is run
-        in and where each value comes from (``/konfig`` override, ``.env`` default, or
+        in and where each value comes from (``/config`` override, ``.env`` default, or
         ``exercise.sty``). Any provided argument updates that field (stored per channel);
         ``reset:true`` clears this channel's stored overrides. Values feed the generated
         ``.tex`` via ``\\renewcommand`` and the PDF filename, so ``exercise.sty`` is never
@@ -358,8 +357,8 @@ class Exercises(commands.Cog):
             )
             await self._reply_ephemeral(
                 interaction,
-                "Konfiguration dieses Kanals zurueckgesetzt — es gelten wieder die "
-                "`.env`- bzw. `exercise.sty`-Standardwerte.",
+                "This channel's configuration has been reset — the "
+                "`.env` / `exercise.sty` defaults apply again.",
             )
             return
 
@@ -367,8 +366,8 @@ class Exercises(commands.Cog):
         if group is not None and group.strip() and not _GROUP_RE.match(group.strip()):
             await self._reply_ephemeral(
                 interaction,
-                "Ungueltige Gruppennummer. Erlaubt sind nur Buchstaben/Ziffern "
-                "(max. 10 Zeichen), da sie im Dateinamen erscheint.",
+                "Invalid group number. Only letters/digits are allowed "
+                "(max. 10 characters), since it appears in the filename.",
             )
             return
 
@@ -378,8 +377,8 @@ class Exercises(commands.Cog):
             updates["group_number"] = group
         if course is not None:
             updates["course"] = course
-        if tutorium is not None:
-            updates["tutorium"] = tutorium
+        if tutorial is not None:
+            updates["tutorium"] = tutorial
         if authors is not None:
             updates["authors"] = authors
         if updates:
@@ -391,10 +390,10 @@ class Exercises(commands.Cog):
 
         def _source(db_val: str | None, env_val: str | None) -> str:
             if db_val:
-                return "/konfig"
+                return "/config"
             if env_val:
                 return ".env"
-            return "exercise.sty (Standard)"
+            return "exercise.sty (default)"
 
         eff_group = cfg.group_number or s.group_number or read_group(
             self.settings.latex_project_dir
@@ -403,64 +402,64 @@ class Exercises(commands.Cog):
         eff_authors = (
             "; ".join(_authors_to_list(eff_authors_raw) or [])
             if eff_authors_raw
-            else "(Standard aus exercise.sty)"
+            else "(default from exercise.sty)"
         )
 
         embed = discord.Embed(
-            title="⚙️ lateXercise-Bot — Konfiguration",
+            title="⚙️ lateXercise bot — Configuration",
             description=(
-                f"Konfiguration fuer diesen Kanal (<#{channel_id}>). Diese Werte landen in "
-                "der Kopfzeile und im Dateinamen der gebauten PDF. "
-                "Reihenfolge: `/konfig` > `.env` > `exercise.sty`."
-                + ("\n\n*(Aktualisiert.)*" if updates else "")
+                f"Configuration for this channel (<#{channel_id}>). These values go into "
+                "the header and filename of the built PDF. "
+                "Order: `/config` > `.env` > `exercise.sty`."
+                + ("\n\n*(Updated.)*" if updates else "")
             ),
             color=0x00549F,
         )
         embed.add_field(
-            name="Gruppennummer",
-            value=f"`{eff_group}`  · Quelle: {_source(cfg.group_number, s.group_number)}",
+            name="Group number",
+            value=f"`{eff_group}`  · Source: {_source(cfg.group_number, s.group_number)}",
             inline=False,
         )
         embed.add_field(
-            name="Kurs",
+            name="Course",
             value=(
-                f"{cfg.course or s.course or '(Standard aus exercise.sty)'}  "
-                f"· Quelle: {_source(cfg.course, s.course)}"
+                f"{cfg.course or s.course or '(default from exercise.sty)'}  "
+                f"· Source: {_source(cfg.course, s.course)}"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Tutorium",
+            name="Tutorial",
             value=(
-                f"{cfg.tutorium or s.tutorium or '(Standard aus exercise.sty)'}  "
-                f"· Quelle: {_source(cfg.tutorium, s.tutorium)}"
+                f"{cfg.tutorium or s.tutorium or '(default from exercise.sty)'}  "
+                f"· Source: {_source(cfg.tutorium, s.tutorium)}"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Autoren",
-            value=f"{eff_authors}  · Quelle: {_source(cfg.authors, s.authors)}",
+            name="Authors",
+            value=f"{eff_authors}  · Source: {_source(cfg.authors, s.authors)}",
             inline=False,
         )
         embed.set_footer(
-            text="Aendern: /konfig group:… course:… tutorium:… authors:'A, 1; B, 2'  |  "
-            "Zuruecksetzen: /konfig reset:true"
+            text="Change: /config group:… course:… tutorial:… authors:'A, 1; B, 2'  |  "
+            "Reset: /config reset:true"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ------------------------------------------------------------------
-    # /blatt
+    # /sheet
     # ------------------------------------------------------------------
 
     @app_commands.command(
-        name="blatt",
-        description="Legt fuer ein Uebungsblatt je einen Thread pro Aufgabe an.",
+        name="sheet",
+        description="Creates one thread per exercise for a problem sheet.",
     )
     @app_commands.describe(
-        sheet="Blattnummer (1..99), wird zweistellig dargestellt (z.B. 6 -> 06).",
-        num_exercises="Anzahl der Aufgaben (1..25).",
+        sheet="Sheet number (1..99), shown as two digits (e.g. 6 -> 06).",
+        num_exercises="Number of exercises (1..25).",
     )
-    async def blatt(
+    async def sheet(
         self,
         interaction: discord.Interaction,
         sheet: int,
@@ -471,7 +470,7 @@ class Exercises(commands.Cog):
         Must run directly in the operating channel (a text channel, *not* a thread).
         Validates the ranges, refuses if the sheet already exists (pointing at the
         existing threads), creates ``num_exercises`` public threads named
-        ``"Blatt <NN> · Aufgabe <i>"``, records each in the store, posts a hub message,
+        ``"Sheet <NN> · Exercise <i>"``, records each in the store, posts a hub message,
         records its id, and replies with a summary.
         """
         if await self._operating_channel(interaction) is None:
@@ -481,25 +480,25 @@ class Exercises(commands.Cog):
         if not (_MIN_SHEET <= sheet <= _MAX_SHEET):
             await self._reply_ephemeral(
                 interaction,
-                f"Ungueltige Blattnummer {sheet}. Erlaubt ist {_MIN_SHEET}..{_MAX_SHEET}.",
+                f"Invalid sheet number {sheet}. Allowed range is {_MIN_SHEET}..{_MAX_SHEET}.",
             )
             return
         if not (_MIN_EXERCISES <= num_exercises <= _MAX_EXERCISES):
             await self._reply_ephemeral(
                 interaction,
-                f"Ungueltige Aufgabenanzahl {num_exercises}. "
-                f"Erlaubt ist {_MIN_EXERCISES}..{_MAX_EXERCISES}.",
+                f"Invalid exercise count {num_exercises}. "
+                f"Allowed range is {_MIN_EXERCISES}..{_MAX_EXERCISES}.",
             )
             return
 
-        # `/blatt` must be issued in the operating *channel*, never inside a thread, so
+        # `/sheet` must be issued in the operating *channel*, never inside a thread, so
         # the created threads attach to the right parent. The operating-channel guard
         # above already confirmed this channel is one of ALLOWED_CHANNEL_IDS.
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel):
             await self._reply_ephemeral(
                 interaction,
-                "`/blatt` muss direkt in einem Arbeitskanal ausgefuehrt werden, nicht in einem Thread.",
+                "`/sheet` must be run directly in a working channel, not in a thread.",
             )
             return
 
@@ -511,17 +510,17 @@ class Exercises(commands.Cog):
 
         # --- duplicate guard: try to create the sheet row first --------------------
         # create_sheet returns False if (channel, sheet) already exists. We create the row
-        # BEFORE threads so a duplicate `/blatt` cannot spawn a second set of threads.
+        # BEFORE threads so a duplicate `/sheet` cannot spawn a second set of threads.
         created = await self.store.create_sheet(channel_id, sheet, num_exercises)
         if not created:
             existing = await self.store.get_threads(channel_id, sheet)
             if existing:
                 links = ", ".join(f"<#{row.thread_id}>" for row in existing)
-                detail = f" Vorhandene Threads: {links}"
+                detail = f" Existing threads: {links}"
             else:
                 detail = ""
             await interaction.followup.send(
-                f"Blatt {padded} existiert bereits.{detail}",
+                f"Sheet {padded} already exists.{detail}",
                 ephemeral=True,
             )
             return
@@ -529,7 +528,7 @@ class Exercises(commands.Cog):
         # --- create the threads ----------------------------------------------------
         created_threads: list[discord.Thread] = []
         for index in range(1, num_exercises + 1):
-            thread_name = f"Blatt {padded} · Aufgabe {index}"
+            thread_name = f"Sheet {padded} · Exercise {index}"
             try:
                 thread = await channel.create_thread(
                     name=thread_name,
@@ -538,13 +537,13 @@ class Exercises(commands.Cog):
                 )
             except discord.HTTPException as exc:
                 # Partial failure: surface what happened. The sheet row exists and any
-                # threads already created are recorded, so a follow-up `/blatt` is
+                # threads already created are recorded, so a follow-up `/sheet` is
                 # refused; the operator can inspect/clean up via the listed threads.
                 logger.exception("Thread creation failed for %s", thread_name)
-                links = ", ".join(f"<#{t.id}>" for t in created_threads) or "keine"
+                links = ", ".join(f"<#{t.id}>" for t in created_threads) or "none"
                 await interaction.followup.send(
-                    f"Thread-Erstellung fehlgeschlagen bei Aufgabe {index}: {exc}. "
-                    f"Bereits erstellt: {links}.",
+                    f"Thread creation failed at exercise {index}: {exc}. "
+                    f"Already created: {links}.",
                     ephemeral=True,
                 )
                 return
@@ -556,13 +555,13 @@ class Exercises(commands.Cog):
 
         # --- post the hub message linking every thread -----------------------------
         thread_lines = "\n".join(
-            f"- Aufgabe {i}: {thread.mention}"
+            f"- Exercise {i}: {thread.mention}"
             for i, thread in enumerate(created_threads, start=1)
         )
         hub_content = (
-            f"**Blatt {padded}** — {num_exercises} Aufgabe(n).\n"
-            "Ladet eure Loesungsfotos in den passenden Thread und nutzt dort `/pick`, "
-            "um die Gewinnerbilder festzulegen. Danach `/build` im Arbeitskanal.\n"
+            f"**Sheet {padded}** — {num_exercises} exercise(s).\n"
+            "Upload your solution photos into the matching thread and use `/pick` there "
+            "to choose the winning images. Then `/build` in the working channel.\n"
             f"{thread_lines}"
         )
         hub_message = await channel.send(hub_content)
@@ -570,8 +569,8 @@ class Exercises(commands.Cog):
 
         # --- ephemeral summary back to the invoker ---------------------------------
         await interaction.followup.send(
-            f"Blatt {padded} angelegt: {num_exercises} Thread(s) erstellt und ein "
-            f"Hub-Beitrag gepostet.",
+            f"Sheet {padded} created: {num_exercises} thread(s) created and a "
+            f"hub post posted.",
             ephemeral=True,
         )
 
@@ -581,7 +580,7 @@ class Exercises(commands.Cog):
 
     @app_commands.command(
         name="pick",
-        description="Waehlt im aktuellen Aufgaben-Thread die Gewinnerbilder je Teil aus.",
+        description="Choose the winning images per part in the current exercise thread.",
     )
     async def pick(self, interaction: discord.Interaction) -> None:
         """Select the winning image(s) for each part of the current exercise thread.
@@ -600,7 +599,7 @@ class Exercises(commands.Cog):
         if not isinstance(channel, discord.Thread):
             await self._reply_ephemeral(
                 interaction,
-                "`/pick` muss **innerhalb** eines Aufgaben-Threads ausgefuehrt werden.",
+                "`/pick` must be run **inside** an exercise thread.",
             )
             return
 
@@ -611,8 +610,8 @@ class Exercises(commands.Cog):
         if thread_row is None:
             await self._reply_ephemeral(
                 interaction,
-                "Dieser Thread gehoert zu keiner bekannten Aufgabe. "
-                "Bitte `/pick` in einem mit `/blatt` erstellten Thread ausfuehren.",
+                "This thread doesn't belong to a known exercise. "
+                "Please run `/pick` in a thread created with `/sheet`.",
             )
             return
 
@@ -649,8 +648,8 @@ class Exercises(commands.Cog):
 
         if not candidates:
             await interaction.followup.send(
-                "In diesem Thread wurden keine Bild-Kandidaten gefunden. "
-                "Ladet zuerst Loesungsfotos (PNG/JPEG/PDF) hoch.",
+                "No image candidates found in this thread. "
+                "Upload solution photos (PNG/JPEG/PDF) first.",
                 ephemeral=True,
             )
             return
@@ -698,7 +697,7 @@ class Exercises(commands.Cog):
                 summary = preview_text(parsed)
                 try:
                     await channel.send(
-                        f"Auswahl fuer Aufgabe {exercise_index} aktualisiert: {summary}"
+                        f"Selection for exercise {exercise_index} updated: {summary}"
                     )
                 except discord.HTTPException:
                     # A failed public announcement must not undo the saved selection.
@@ -713,11 +712,11 @@ class Exercises(commands.Cog):
         listing = build_candidate_listing(candidates)
         embeds = build_gallery_embeds(candidates)
         content = (
-            f"**Aufgabe {exercise_index}** — {len(candidates)} Bild-Kandidat(en) "
-            "gefunden (aelteste zuerst nummeriert):\n"
+            f"**Exercise {exercise_index}** — {len(candidates)} image candidate(s) "
+            "found (numbered oldest-first):\n"
             f"{listing}\n\n"
-            "Klicke **Teile eingeben** und gib pro Zeile `Teil: Nummer(n)` an, "
-            "z.B. `a: 2` oder `: 2` fuer die ganze Aufgabe."
+            "Click **Enter parts** and give `part: number(s)` per line, "
+            "e.g. `a: 2` or `: 2` for the whole exercise."
         )
         # Discord caps a message at 10 embeds; build_gallery_embeds already trims to the
         # 10 most recent candidates, while `listing` references all of them by number.
@@ -737,11 +736,11 @@ class Exercises(commands.Cog):
 
     @app_commands.command(
         name="build",
-        description="Baut die PDF eines Blattes aus den ausgewaehlten Bildern.",
+        description="Builds the PDF for a sheet from the selected images.",
     )
     @app_commands.describe(
-        sheet="Blattnummer (1..99) des zu bauenden Blattes.",
-        skip_missing="Aufgaben ohne Auswahl ueberspringen statt abzubrechen.",
+        sheet="Sheet number (1..99) of the sheet to build.",
+        skip_missing="Skip exercises without a selection instead of aborting.",
     )
     async def build(
         self,
@@ -757,17 +756,17 @@ class Exercises(commands.Cog):
         For each selected exercise it re-fetches every message by id (unarchiving the
         thread if needed), places each attachment under ``<project>/ex<NN>/`` (wiped and
         recreated first), renders ``ex<NN>.tex``, compiles
-        ``Gruppe_<group>_Blatt_<NN>.pdf`` and posts it — or a log excerpt on failure.
+        ``Group_<group>_Sheet_<NN>.pdf`` and posts it — or a log excerpt on failure.
         """
         if await self._operating_channel(interaction) is None:
             return
 
-        # --- input validation (parity with /blatt; defense-in-depth for the ex<NN>
+        # --- input validation (parity with /sheet; defense-in-depth for the ex<NN>
         #     folder wipe below, which must only ever target a valid two-digit folder) ---
         if not (_MIN_SHEET <= sheet <= _MAX_SHEET):
             await self._reply_ephemeral(
                 interaction,
-                f"Ungueltige Blattnummer {sheet}. Erlaubt ist {_MIN_SHEET}..{_MAX_SHEET}.",
+                f"Invalid sheet number {sheet}. Allowed range is {_MIN_SHEET}..{_MAX_SHEET}.",
             )
             return
 
@@ -777,7 +776,7 @@ class Exercises(commands.Cog):
         if not isinstance(channel, discord.TextChannel):
             await self._reply_ephemeral(
                 interaction,
-                "`/build` muss direkt in einem Arbeitskanal ausgefuehrt werden, nicht in einem Thread.",
+                "`/build` must be run directly in a working channel, not in a thread.",
             )
             return
 
@@ -796,8 +795,8 @@ class Exercises(commands.Cog):
         if sheet_row is None:
             await self._reply_ephemeral(
                 interaction,
-                f"Blatt {pad_sheet(sheet)} existiert nicht. "
-                "Lege es zuerst mit `/blatt` an.",
+                f"Sheet {pad_sheet(sheet)} does not exist. "
+                "Create it first with `/sheet`.",
             )
             return
 
@@ -819,9 +818,9 @@ class Exercises(commands.Cog):
         if gaps and not skip_missing:
             gap_list = ", ".join(str(g) for g in gaps)
             await interaction.followup.send(
-                f"Es fehlt eine Auswahl fuer Aufgabe(n) {gap_list}. "
-                "Nutze `/pick` in den jeweiligen Threads oder rufe `/build` mit "
-                "`skip_missing: True` auf, um sie zu ueberspringen.",
+                f"A selection is missing for exercise(s) {gap_list}. "
+                "Use `/pick` in the respective threads, or run `/build` with "
+                "`skip_missing: True` to skip them.",
                 ephemeral=True,
             )
             return
@@ -830,7 +829,7 @@ class Exercises(commands.Cog):
         thread_rows = await self.store.get_threads(channel_id, sheet)
         thread_by_index = {row.exercise_index: row for row in thread_rows}
 
-        # Resolve this channel's header overrides (group/course/tutorium/authors): /konfig
+        # Resolve this channel's header overrides (group/course/tutorium/authors): /config
         # wins over .env, which wins over exercise.sty. The group number drives both the
         # \ExerciseGroup override and the output filename (sanitised to stay file-safe).
         overrides = await self._resolve_overrides(channel_id)
@@ -842,7 +841,7 @@ class Exercises(commands.Cog):
         # work lives in a helper run under _build_lock; it replies on error and returns None.
         rel_dir = f"ex{padded}"
         dest_dir = project_dir / rel_dir
-        jobname = f"Gruppe_{group}_Blatt_{padded}"
+        jobname = f"Group_{group}_Sheet_{padded}"
         async with self._build_lock:
             result = await self._assemble_and_compile(
                 interaction,
@@ -863,10 +862,10 @@ class Exercises(commands.Cog):
 
         if not result.ok or result.pdf_path is None:
             # Surface the trimmed log excerpt in a fenced code block for debugging.
-            excerpt = result.log_excerpt or "(kein Log verfuegbar)"
+            excerpt = result.log_excerpt or "(no log available)"
             await interaction.followup.send(
-                f"LaTeX-Kompilierung fehlgeschlagen (Code {result.returncode}"
-                f"{', Timeout' if result.timed_out else ''}).\n"
+                f"LaTeX compilation failed (code {result.returncode}"
+                f"{', timeout' if result.timed_out else ''}).\n"
                 f"```\n{excerpt}\n```",
                 ephemeral=True,
             )
@@ -876,36 +875,36 @@ class Exercises(commands.Cog):
         skipped_note = ""
         if skip_missing and gaps:
             skipped_note = (
-                f" (uebersprungen: Aufgabe(n) {', '.join(str(g) for g in gaps)})"
+                f" (skipped: exercise(s) {', '.join(str(g) for g in gaps)})"
             )
         try:
             # Post the PDF publicly via channel.send (not the ephemeral-deferred followup) so the
-            # whole group sees and can download it — mirrors how /blatt posts its hub message.
+            # whole group sees and can download it — mirrors how /sheet posts its hub message.
             # This avoids any dependency on followup ephemerality semantics after an ephemeral defer.
             await channel.send(
-                content=f"**Blatt {padded}** ist fertig: `{jobname}.pdf`{skipped_note}",
+                content=f"**Sheet {padded}** is ready: `{jobname}.pdf`{skipped_note}",
                 file=discord.File(str(result.pdf_path), filename=f"{jobname}.pdf"),
             )
         except discord.HTTPException as exc:
             if exc.status == _HTTP_REQUEST_ENTITY_TOO_LARGE:
                 # Discord rejected the upload as too large (8/25/50 MB depending on tier).
                 await interaction.followup.send(
-                    f"Die fertige PDF `{jobname}.pdf` ist zu gross fuer den Discord-Upload. "
-                    "Reduziere die Bildaufloesung (z.B. `DOWNSCALE_MAX_PX` setzen) und "
-                    "baue erneut.",
+                    f"The finished PDF `{jobname}.pdf` is too large for the Discord upload. "
+                    "Reduce the image resolution (e.g. set `DOWNSCALE_MAX_PX`) and "
+                    "build again.",
                     ephemeral=True,
                 )
             else:
                 logger.exception("Failed to upload built PDF for sheet %s", sheet)
                 await interaction.followup.send(
-                    f"Upload der PDF fehlgeschlagen: {exc}",
+                    f"PDF upload failed: {exc}",
                     ephemeral=True,
                 )
             return
 
         # Confirm to the invoker (ephemeral) and resolve the lingering "thinking" state.
         await interaction.followup.send(
-            f"Fertig — `{jobname}.pdf` wurde im Kanal gepostet.{skipped_note}",
+            f"Done — `{jobname}.pdf` was posted in the channel.{skipped_note}",
             ephemeral=True,
         )
 
@@ -945,7 +944,7 @@ class Exercises(commands.Cog):
             dest_dir.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             await interaction.followup.send(
-                f"Konnte das Ausgabeverzeichnis `{rel_dir}` nicht vorbereiten: {exc}.",
+                f"Could not prepare the output directory `{rel_dir}`: {exc}.",
                 ephemeral=True,
             )
             return None
@@ -974,9 +973,9 @@ class Exercises(commands.Cog):
                         )
                         continue
                     await interaction.followup.send(
-                        f"Kein Thread fuer Aufgabe {index} gefunden, aber es existiert "
-                        "eine Auswahl. Bitte das Blatt mit `/blatt` neu anlegen oder "
-                        "`/build` mit `skip_missing: True` aufrufen.",
+                        f"No thread found for exercise {index}, but a selection "
+                        "exists. Please recreate the sheet with `/sheet` or "
+                        "run `/build` with `skip_missing: True`.",
                         ephemeral=True,
                     )
                     return None
@@ -993,8 +992,8 @@ class Exercises(commands.Cog):
                         )
                         continue
                     await interaction.followup.send(
-                        f"Der Thread fuer Aufgabe {index} ist nicht erreichbar "
-                        "(geloescht?). Bitte erneut anlegen oder `skip_missing: True` nutzen.",
+                        f"The thread for exercise {index} is unreachable "
+                        "(deleted?). Please recreate it or use `skip_missing: True`.",
                         ephemeral=True,
                     )
                     return None
@@ -1010,20 +1009,20 @@ class Exercises(commands.Cog):
                 exercise_docs.append(ExerciseDoc(index=index, parts=figure_parts))
         except UnsupportedImageError as exc:
             # A picked image is in a format pdflatex cannot embed (HEIC/webp/...).
-            await interaction.followup.send(f"Build abgebrochen: {exc}", ephemeral=True)
+            await interaction.followup.send(f"Build aborted: {exc}", ephemeral=True)
             return None
         except discord.NotFound as exc:
             # A referenced message/attachment no longer exists (deleted upload).
             await interaction.followup.send(
-                f"Build abgebrochen: eine ausgewaehlte Nachricht/Anhang existiert nicht "
-                f"mehr ({exc}). Bitte die betroffene Aufgabe erneut `/pick`en.",
+                f"Build aborted: a selected message/attachment no longer "
+                f"exists ({exc}). Please re-run `/pick` for the affected exercise.",
                 ephemeral=True,
             )
             return None
 
         if not exercise_docs:
             await interaction.followup.send(
-                "Es gibt nichts zu bauen — keine Aufgabe hat eine Auswahl.",
+                "Nothing to build — no exercise has a selection.",
                 ephemeral=True,
             )
             return None
@@ -1035,7 +1034,7 @@ class Exercises(commands.Cog):
             tex_path.write_text(tex_source, encoding="utf-8")
         except OSError as exc:
             await interaction.followup.send(
-                f"Konnte `{rel_dir}/ex{padded}.tex` nicht schreiben: {exc}.",
+                f"Could not write `{rel_dir}/ex{padded}.tex`: {exc}.",
                 ephemeral=True,
             )
             return None
@@ -1129,8 +1128,8 @@ class Exercises(commands.Cog):
                     # The message exists but the specific attachment is gone.
                     raise discord.NotFound(
                         _FakeResponse(),  # type: ignore[arg-type]
-                        f"Anhang {image_ref.attachment_id} in Nachricht "
-                        f"{image_ref.message_id} nicht gefunden ({image_ref.filename}).",
+                        f"Attachment {image_ref.attachment_id} not found in message "
+                        f"{image_ref.message_id} ({image_ref.filename}).",
                     )
 
                 saved = await download_and_place(
@@ -1202,8 +1201,8 @@ class Exercises(commands.Cog):
         )
 
         message = (
-            "Es ist ein unerwarteter Fehler aufgetreten. Bitte versuche es erneut; "
-            "falls es weiterhin auftritt, pruefe die Bot-Logs."
+            "An unexpected error occurred. Please try again; "
+            "if it persists, check the bot logs."
         )
         try:
             await self._reply_ephemeral(interaction, message)

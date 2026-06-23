@@ -9,14 +9,14 @@
   \renewcommand{\ExerciseSheet}{#1}%
 }
 
-% output format Gruppe_XXX_Blatt_YY.pdf
+% output format Group_XXX_Sheet_YY.pdf
 \newcommand{\ExercisePdfName}{%
-  Gruppe_\ExerciseGroup_Blatt_\ExerciseSheet
+  Group_\ExerciseGroup_Sheet_\ExerciseSheet
 }
 
 % Core layout
 % \RequirePackage[a4paper,left=1.5cm,right=1.5cm,top=2cm,bottom=2cm]{geometry} % mlds
-\RequirePackage[a4paper, left=2cm, right=4.5cm, top=2cm, bottom=2cm]{geometry} % kleinere Ränder
+\RequirePackage[a4paper, left=2cm, right=4.5cm, top=2cm, bottom=2cm]{geometry} % smaller margins
 \RequirePackage[headsepline]{scrlayer-scrpage}
 \RequirePackage{placeins}
 \setlength{\headheight}{3\baselineskip}
@@ -45,9 +45,9 @@
 % If you use LuaLaTeX/XeLaTeX, do NOT load inputenc.
 \RequirePackage[utf8]{inputenc}
 % Language toggle: keep exactly one of the two lines below uncommented.
-% Default is German (ngerman); switch to English by swapping which line is active.
-% \RequirePackage[english]{babel}
-\RequirePackage[ngerman]{babel}
+% Default is English; switch to German by swapping which line is active.
+\RequirePackage[english]{babel}
+% \RequirePackage[ngerman]{babel}
 
 % Math and typography
 \RequirePackage{amsmath,mathtools,amssymb,microtype,enumitem,multicol,booktabs}
@@ -93,15 +93,15 @@
 \definecolor{rwth-silver}{cmyk}{.39,.31,.32,.14}
 
 % Metadata commands and header builder.
-% These are placeholder defaults — override them per group via the bot's /konfig
+% These are placeholder defaults — override them per group via the bot's /config
 % command or the .env file (GROUP_NUMBER/COURSE/TUTORIUM/AUTHORS), or edit them here.
 \newcommand{\exerciseCourse}{Course Name}
-\newcommand{\exerciseGroup}{Tutorium 00}
+\newcommand{\exerciseGroup}{Tutorial 00}
 \newcommand{\exerciseAuthors}{
-    Anna Muster, 111111\\
-    Ben Beispiel, 222222}
+    Anna Sample, 111111\\
+    Ben Example, 222222}
 
-\renewcommand{\exerciseTitle}{Blatt \ExerciseSheet}
+\renewcommand{\exerciseTitle}{Sheet \ExerciseSheet}
 % Leave empty so you can override per file
 % \newcommand{\exerciseTitle}{}
 

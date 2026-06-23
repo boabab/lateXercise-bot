@@ -4,7 +4,7 @@ This module is the single place that knows how to turn a study group's *selectio
 (an ordered list of exercises, each an ordered list of parts, each holding ordered
 image pages) into a `.tex` document that matches the bundled template style
 (``latex-project/exercise.sty`` and ``example.tex``) — and how to compile that
-document into the ``Gruppe_<group>_Blatt_<NN>.pdf`` the group submits.
+document into the ``Group_<group>_Sheet_<NN>.pdf`` the group submits.
 
 Design constraints (see ``data/CONTRACTS.md``):
 
@@ -154,10 +154,10 @@ class FigurePart:
 
 @dataclass
 class ExerciseDoc:
-    """One exercise (Aufgabe) within a sheet.
+    """One exercise (Exercise) within a sheet.
 
     Attributes:
-        index: 1-based Aufgabe number. Exercises are sorted ascending by this value
+        index: 1-based Exercise number. Exercises are sorted ascending by this value
             in :func:`render_tex`, regardless of input order.
         parts: Ordered parts. May be empty only when the caller explicitly allows
             skipping; an empty list yields just the ``\\section*`` header.
@@ -176,16 +176,16 @@ class HeaderOverrides:
     ``\\renewcommand`` lines in the *generated* document for whichever of these are set
     (after ``\\usepackage{exercise}``, so the package's own definitions exist to renew).
     A field left ``None``/empty is simply not overridden — ``exercise.sty``'s default
-    stands. See the cog's ``/konfig`` command and the ``.env`` defaults.
+    stands. See the cog's ``/config`` command and the ``.env`` defaults.
 
     Attributes:
         group_number: Overrides ``\\ExerciseGroup`` (e.g. ``"000"``). Also drives the
-            output filename ``Gruppe_<group>_Blatt_<NN>.pdf`` (the cog uses it for the
+            output filename ``Group_<group>_Sheet_<NN>.pdf`` (the cog uses it for the
             ``-jobname``). Should be alphanumeric so the filename stays portable.
         course: Overrides ``\\exerciseCourse`` (e.g. ``"Course Name"``).
-        tutorium: Overrides ``\\exerciseGroup`` (e.g. ``"Tutorium 00"``).
+        tutorium: Overrides ``\\exerciseGroup`` (e.g. ``"Tutorial 00"``).
         authors: Overrides ``\\exerciseAuthors``; each entry is one line, joined with a
-            LaTeX ``\\\\`` line break (e.g. ``["Anna Muster, 111111", "Ben Beispiel, ..."]``).
+            LaTeX ``\\\\`` line break (e.g. ``["Anna Sample, 111111", "Ben Example, ..."]``).
     """
 
     group_number: str | None = None
@@ -233,7 +233,7 @@ def _render_header_overrides(overrides: HeaderOverrides | None) -> list[str]:
     if not lines:
         return []
     # A blank separator line + a comment keeps the generated preamble readable.
-    return ["", "% Per-group header overrides (set via /konfig or .env defaults)."] + lines
+    return ["", "% Per-group header overrides (set via /config or .env defaults)."] + lines
 
 def _render_figure(image_path: str) -> str:
     """Render a single ``figure`` block for *image_path*.
@@ -270,15 +270,15 @@ def render_tex(
         \\exerciseMakeHeaders
 
         \\begin{document}
-        \\section*{Aufgabe 1}
+        \\section*{Exercise 1}
         <parts...>
         \\newpage
-        \\section*{Aufgabe 2}
+        \\section*{Exercise 2}
         <parts...>
         \\end{document}
 
     Per exercise:
-        * ``\\section*{Aufgabe <index>}`` header (followed by a blank line).
+        * ``\\section*{Exercise <index>}`` header (followed by a blank line).
         * For each part: if the label is non-empty, ``\\paragraph{<label>}`` via
           :func:`label_to_paragraph`; then one ``figure`` block per image, with a
           blank line between consecutive figure blocks.
@@ -306,12 +306,12 @@ def render_tex(
     #
     #   \providecommand{\exerciseTitle}{}
     #
-    # The shipped exercise.sty does `\renewcommand{\exerciseTitle}{Blatt \ExerciseSheet}`
+    # The shipped exercise.sty does `\renewcommand{\exerciseTitle}{Sheet \ExerciseSheet}`
     # (line ~102) on a command it never `\newcommand`'d (the defining line right below is
     # commented out), so loading the package fails with "Command \exerciseTitle undefined"
     # on a clean TeX install. We must NOT edit the shared exercise.sty, so instead the
     # generated document defines \exerciseTitle as empty *before* loading the package; the
-    # package's \renewcommand then succeeds and still sets the title to "Blatt <NN>".
+    # package's \renewcommand then succeeds and still sets the title to "Sheet <NN>".
     # \providecommand is a no-op if a future exercise.sty defines the command itself.
     lines: list[str] = [
         "\\documentclass[a4paper,11pt]{scrartcl}",
@@ -331,12 +331,12 @@ def render_tex(
         "\\begin{document}",
     ])
 
-    # Stable, ascending order by Aufgabe number — the store may hand us any order.
+    # Stable, ascending order by Exercise number — the store may hand us any order.
     ordered = sorted(exercises, key=lambda ex: ex.index)
 
     for ex_pos, exercise in enumerate(ordered):
         # Section header, then a blank line, exactly like the example sheet.
-        lines.append(f"\\section*{{Aufgabe {exercise.index}}}")
+        lines.append(f"\\section*{{Exercise {exercise.index}}}")
         lines.append("")
 
         for part in exercise.parts:
@@ -733,7 +733,7 @@ def read_group(project_dir: Path, *, default: str = "000") -> str:
 
     The group is defined in the (never-edited) style file as
     ``\\newcommand{\\ExerciseGroup}{000}``. We extract the digits via regex so the
-    bot's output filename (``Gruppe_<group>_Blatt_<NN>.pdf``) always tracks whatever
+    bot's output filename (``Group_<group>_Sheet_<NN>.pdf``) always tracks whatever
     the style file declares.
 
     Args:

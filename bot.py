@@ -16,7 +16,7 @@ Intents (see ``data/CONTRACTS.md`` "CRITICAL CORRECTIONS FROM RESEARCH" #1)
 We start from :meth:`discord.Intents.none` and enable exactly two gateway intents:
 
 * ``guilds`` — required to receive guild/thread objects and to create/manage the
-  exercise threads ``/blatt`` and ``/build`` operate on.
+  exercise threads ``/sheet`` and ``/build`` operate on.
 * ``message_content`` — a **privileged** intent that MUST be enabled, both here and in
   the Discord Developer Portal. ``/pick`` reads other group members' uploaded photos via
   ``thread.history()``; Discord gates ``content``/``attachments``/``embeds``/``components``
@@ -62,7 +62,7 @@ def _build_intents() -> discord.Intents:
     ``message_content`` is mandatory (reading other users' attachments in ``/pick``).
     """
     intents = discord.Intents.none()
-    # Needed for guild/thread objects and thread management used by /blatt and /build.
+    # Needed for guild/thread objects and thread management used by /sheet and /build.
     intents.guilds = True
     # PRIVILEGED: required to read attachments on messages the bot did not author, which
     # is exactly what /pick does when scanning thread.history() for candidate photos.
@@ -106,7 +106,7 @@ class LateXerciseBot(commands.Bot):
         syncing. We:
 
         1. ``await store.init()`` — open the DB connection and create tables.
-        2. add the :class:`Exercises` cog (which declares ``/blatt``, ``/pick``, ``/build``).
+        2. add the :class:`Exercises` cog (which declares ``/sheet``, ``/pick``, ``/build``).
         3. copy the globally declared app commands onto the configured guild and sync there,
            so the commands appear in that guild within seconds instead of up to an hour.
         """
