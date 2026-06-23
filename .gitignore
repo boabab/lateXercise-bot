@@ -1,0 +1,35 @@
+# secrets & runtime
+.env
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# os
+.DS_Store
+
+# local agent / editor state
+.claude/
+
+# bot-generated LaTeX folders (zero-padded ex06/, ex07/, …) and build artifacts.
+# Only two-digit ex<NN>/ folders are ignored; any single-digit ex1/…/ex5/ added by hand are kept.
+latex-project/ex[0-9][0-9]/
+*.aux
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+*.toc
+*.log
+# keep generated PDFs out of git; the bot posts them to Discord
+Gruppe_*_Blatt_*.pdf
+!data/.gitkeep

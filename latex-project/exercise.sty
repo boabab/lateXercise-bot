@@ -1,0 +1,113 @@
+% exercise.sty
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{exercise}
+
+\newcommand{\ExerciseGroup}{000} % <-- set your group number here
+\newcommand{\ExerciseSheet}{??} % will be set in each .tex file
+
+\newcommand{\setExerciseSheet}[1]{%
+  \renewcommand{\ExerciseSheet}{#1}%
+}
+
+% output format Gruppe_XXX_Blatt_YY.pdf
+\newcommand{\ExercisePdfName}{%
+  Gruppe_\ExerciseGroup_Blatt_\ExerciseSheet
+}
+
+% Core layout
+% \RequirePackage[a4paper,left=1.5cm,right=1.5cm,top=2cm,bottom=2cm]{geometry} % mlds
+\RequirePackage[a4paper, left=2cm, right=4.5cm, top=2cm, bottom=2cm]{geometry} % kleinere Ränder
+\RequirePackage[headsepline]{scrlayer-scrpage}
+\RequirePackage{placeins}
+\setlength{\headheight}{3\baselineskip}
+
+% Page style
+\pagestyle{scrheadings}
+\clearpairofpagestyles
+\setlength{\parindent}{0pt}
+\setkomafont{pagehead}{\sffamily\upshape}
+
+% Hyperref
+\RequirePackage{hyperref}
+\hypersetup{
+  colorlinks,
+  pdfpagelabels,
+  pdfstartview=FitH,
+  bookmarksopen=true,
+  bookmarksnumbered=true,
+  linkcolor=black,
+  plainpages=false,
+  hypertexnames=false,
+  citecolor=black
+}
+
+% Language + encoding
+% If you use LuaLaTeX/XeLaTeX, do NOT load inputenc.
+\RequirePackage[utf8]{inputenc}
+% Language toggle: keep exactly one of the two lines below uncommented.
+% Default is German (ngerman); switch to English by swapping which line is active.
+% \RequirePackage[english]{babel}
+\RequirePackage[ngerman]{babel}
+
+% Math and typography
+\RequirePackage{amsmath,mathtools,amssymb,microtype,enumitem,multicol,booktabs}
+\RequirePackage{xspace}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows,calc}
+\RequirePackage{xcolor}
+
+% Shortcuts
+\newcommand{\NN}{\mathbb N}
+\newcommand{\RR}{\mathbb R}
+\newcommand{\QQ}{\mathbb Q}
+\newcommand{\ZZ}{\mathbb Z}
+
+% Complexity
+\newcommand{\pc}{\ensuremath{{\sf P}}}
+\newcommand{\np}{\ensuremath{{\sf NP}}}
+\newcommand{\npc}{\ensuremath{{\sf NPC}}}
+\newcommand{\pspace}{\ensuremath{{\sf PSPACE}}}
+\newcommand{\exptime}{\ensuremath{{\sf EXPTIME}}}
+\newcommand{\CClassNP}{\textup{NP}\xspace}
+\newcommand{\CClassP}{\textup{P}\xspace}
+
+% Preferences
+\renewcommand{\phi}{\varphi}
+\renewcommand{\theta}{\vartheta}
+\renewcommand{\labelenumi}{(\roman{enumi})}
+
+% RWTH-like colors
+\definecolor{rwth-blue}{cmyk}{1,.5,0,0}\colorlet{rwth-lblue}{rwth-blue!50}\colorlet{rwth-llblue}{rwth-blue!25}
+\definecolor{rwth-violet}{cmyk}{.6,.6,0,0}\colorlet{rwth-lviolet}{rwth-violet!50}\colorlet{rwth-llviolet}{rwth-violet!25}
+\definecolor{rwth-purple}{cmyk}{.7,1,.35,.15}\colorlet{rwth-lpurple}{rwth-purple!50}\colorlet{rwth-llpurple}{rwth-purple!25}
+\definecolor{rwth-carmine}{cmyk}{.25,1,.7,.2}\colorlet{rwth-lcarmine}{rwth-carmine!50}\colorlet{rwth-llcarmine}{rwth-carmine!25}
+\definecolor{rwth-red}{cmyk}{.15,1,1,0}\colorlet{rwth-lred}{rwth-red!50}\colorlet{rwth-llred}{rwth-red!25}
+\definecolor{rwth-magenta}{cmyk}{0,1,.25,0}\colorlet{rwth-lmagenta}{rwth-magenta!50}\colorlet{rwth-llmagenta}{rwth-magenta!25}
+\definecolor{rwth-orange}{cmyk}{0,.4,1,0}\colorlet{rwth-lorange}{rwth-orange!50}\colorlet{rwth-llorange}{rwth-orange!25}
+\definecolor{rwth-yellow}{cmyk}{0,0,1,0}\colorlet{rwth-lyellow}{rwth-yellow!50}\colorlet{rwth-llyellow}{rwth-yellow!25}
+\definecolor{rwth-grass}{cmyk}{.35,0,1,0}\colorlet{rwth-lgrass}{rwth-grass!50}\colorlet{rwth-llgrass}{rwth-grass!25}
+\definecolor{rwth-green}{cmyk}{.7,0,1,0}\colorlet{rwth-lgreen}{rwth-green!50}\colorlet{rwth-llgreen}{rwth-green!25}
+\definecolor{rwth-cyan}{cmyk}{1,0,.4,0}\colorlet{rwth-lcyan}{rwth-cyan!50}\colorlet{rwth-llcyan}{rwth-cyan!25}
+\definecolor{rwth-teal}{cmyk}{1,.3,.5,.3}\colorlet{rwth-lteal}{rwth-teal!50}\colorlet{rwth-llteal}{rwth-teal!25}
+\definecolor{rwth-gold}{cmyk}{.35,.46,.7,.35}
+\definecolor{rwth-silver}{cmyk}{.39,.31,.32,.14}
+
+% Metadata commands and header builder.
+% These are placeholder defaults — override them per group via the bot's /konfig
+% command or the .env file (GROUP_NUMBER/COURSE/TUTORIUM/AUTHORS), or edit them here.
+\newcommand{\exerciseCourse}{Course Name}
+\newcommand{\exerciseGroup}{Tutorium 00}
+\newcommand{\exerciseAuthors}{
+    Anna Muster, 111111\\
+    Ben Beispiel, 222222}
+
+\renewcommand{\exerciseTitle}{Blatt \ExerciseSheet}
+% Leave empty so you can override per file
+% \newcommand{\exerciseTitle}{}
+
+\newcommand{\exerciseMakeHeaders}{%
+  \ihead{\exerciseCourse\\\exerciseGroup\\\today}%
+  \chead{\Large \exerciseTitle}%
+  \ohead{\exerciseAuthors}%
+  \cfoot*{\pagemark}%
+}
