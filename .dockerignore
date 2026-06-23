@@ -1,0 +1,56 @@
+# Build context excludes — keep the image lean and never copy secrets/local state.
+# What the image actually needs: bot.py, the bot/ package, requirements.txt, and the
+# LaTeX project (exercise.sty + example.tex + sample.png). Everything else is excluded.
+
+# VCS & CI
+.git
+.gitignore
+.github
+
+# Python runtime/build cruft
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Local dev / editor / agent state
+.vscode/
+.claude/
+.DS_Store
+
+# Secrets & runtime data (config comes from env vars; the DB lives on the /data volume)
+.env
+.env.example
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Tests & docs — not needed at runtime
+tests/
+PLAN.md
+SETUP.md
+README.md
+DOCKER.md
+assets/
+
+# Docker itself
+Dockerfile
+.dockerignore
+
+# Generated LaTeX build artifacts — the bot regenerates these per /build, so they must
+# never be baked into the image (mirrors .gitignore).
+latex-project/ex[0-9][0-9]/
+*.aux
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.out
+*.toc
+*.log
+Gruppe_*_Blatt_*.pdf
+Group_*_Sheet_*.pdf
