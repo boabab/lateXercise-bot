@@ -43,6 +43,41 @@
       },
       "problemMatcher": [],
       "group": "test"
+    },
+    {
+      "label": "Build lateXercise Docker image",
+      "detail": "docker build -t latexercise-bot .  (uses ./Dockerfile + .dockerignore)",
+      "type": "shell",
+      "command": "docker",
+      "args": ["build", "-t", "latexercise-bot", "."],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run lateXercise (Docker)",
+      "detail": "Builds the image, then runs the bot in a container, detached. Config comes from the LOCAL .env, mounted read-only so the bot's own loader parses it (inline #-comments and quotes handled correctly); the container's baked-in /data + /app/latex-project paths win over the .env's host paths. The SQLite DB persists in the 'latexercise-data' volume. This task then tails the logs — closing the terminal stops only the log tail, NOT the container (it keeps running via --restart unless-stopped). Stop/remove it with: docker rm -f latexercise",
+      "type": "shell",
+      "command": "docker rm -f latexercise 2>/dev/null; docker run -d --name latexercise --restart unless-stopped -v \"${workspaceFolder}/.env:/app/.env:ro\" -v latexercise-data:/data latexercise-bot && docker logs -f latexercise",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "Build lateXercise Docker image",
+      "dependsOrder": "sequence",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
     }
   ]
 }
