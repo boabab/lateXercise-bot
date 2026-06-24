@@ -52,11 +52,13 @@ from ..latex import (
     ExerciseDoc,
     FigurePart,
     HeaderOverrides,
+    LanguageStrings,
     compile_pdf,
     pad_sheet,
     read_group,
     render_tex,
     resolve_compiler,
+    resolve_language,
 )
 from ..store import ImageRef, Part, Store, ThreadRow
 from ..ui import (
@@ -219,6 +221,17 @@ class Exercises(commands.Cog):
             authors=_authors_to_list(cfg.authors or s.authors),
         )
 
+    async def _resolve_language(self, channel_id: int) -> LanguageStrings:
+        """Resolve the effective output language for a channel.
+
+        Precedence: per-channel ``/config language`` > ``.env`` ``LANGUAGE`` default >
+        the bot's built-in default (English). Always returns a usable
+        :class:`~bot.latex.LanguageStrings` (the resolver falls back to the default for any
+        unset/unrecognized value), which drives both the PDF filename and ``render_tex``.
+        """
+        cfg = await self.store.get_channel_config(channel_id)
+        return resolve_language(cfg.language or self.settings.language)
+
     # ------------------------------------------------------------------
     # /help
     # ------------------------------------------------------------------
@@ -283,18 +296,21 @@ class Exercises(commands.Cog):
             name="3) /build <sheet> [skip_missing]",
             value=(
                 "Builds the PDF and posts it in the channel. Example: `/build 6` → "
-                "`Group_<no>_Sheet_06.pdf`.\n"
+                "`Group_<no>_Sheet_06.pdf` (English) or `Gruppe_<no>_Blatt_06.pdf` "
+                "(Deutsch — see `/config language`).\n"
                 "If an exercise has no selection, the command aborts and lists the "
                 "gaps — use `skip_missing: true` to skip them."
             ),
             inline=False,
         )
         embed.add_field(
-            name="/config  — customise header & filename",
+            name="/config  — customise header, language & filename",
             value=(
-                "Set group number, course, tutorial and author list, e.g.\n"
+                "Set group number, course, tutorial, author list and language, e.g.\n"
                 "`/config group:123 tutorial:\"Tutorial 12\" "
-                "authors:\"Anna, 111; Ben, 222\"`.\n"
+                "authors:\"Anna, 111; Ben, 222\" language:Deutsch`.\n"
+                "`language:Deutsch` makes the whole sheet German (headings *Aufgabe*, "
+                "title *Blatt*, German date) and names it `Gruppe_…_Blatt_NN.pdf`.\n"
                 "With no arguments `/config` shows the current configuration; "
                 "`/config reset:true` resets it."
             ),
@@ -318,14 +334,21 @@ class Exercises(commands.Cog):
 
     @app_commands.command(
         name="config",
-        description="Show/change the PDF's group number, course, tutorial and authors.",
+        description="Show/change the PDF's group number, course, tutorial, authors and language.",
     )
     @app_commands.describe(
         group="Group number (letters/digits only) — appears in the filename.",
         course="Course / lecture name for the header, e.g. 'My Course 2026'.",
         tutorial="Tutorial / group label for the header, e.g. 'Tutorial 12'.",
         authors="Authors, separated by ';', e.g. 'Anna Sample, 111111; Ben Example, 222222'.",
+        language="Output language: English (Group_…_Sheet) or Deutsch (Gruppe_…_Blatt).",
         reset="Delete all stored values (back to .env / exercise.sty).",
+    )
+    @app_commands.choices(
+        language=[
+            app_commands.Choice(name="English", value="en"),
+            app_commands.Choice(name="Deutsch (German)", value="de"),
+        ]
     )
     async def config(
         self,
@@ -334,17 +357,18 @@ class Exercises(commands.Cog):
         course: str | None = None,
         tutorial: str | None = None,
         authors: str | None = None,
+        language: app_commands.Choice[str] | None = None,
         reset: bool = False,
     ) -> None:
-        """View or change **this channel's** header overrides used by ``/build``.
+        """View or change **this channel's** overrides used by ``/build``.
 
         Each operating channel is its own submission group with its own configuration. With
         no arguments it shows the current effective configuration for the channel it is run
         in and where each value comes from (``/config`` override, ``.env`` default, or
-        ``exercise.sty``). Any provided argument updates that field (stored per channel);
-        ``reset:true`` clears this channel's stored overrides. Values feed the generated
-        ``.tex`` via ``\\renewcommand`` and the PDF filename, so ``exercise.sty`` is never
-        edited.
+        ``exercise.sty`` / the built-in language default). Any provided argument updates that
+        field (stored per channel); ``reset:true`` clears this channel's stored overrides.
+        Values feed the generated ``.tex`` via ``\\renewcommand``, the chosen ``language``
+        (en/de), and the PDF filename, so ``exercise.sty`` is never edited.
         """
         channel_id = await self._operating_channel(interaction)
         if channel_id is None:
@@ -353,7 +377,8 @@ class Exercises(commands.Cog):
         # --- reset path: clear this channel's stored overrides ---------------------
         if reset:
             await self.store.set_channel_config(
-                channel_id, group_number=None, course=None, tutorium=None, authors=None
+                channel_id, group_number=None, course=None, tutorium=None,
+                authors=None, language=None,
             )
             await self._reply_ephemeral(
                 interaction,
@@ -381,6 +406,9 @@ class Exercises(commands.Cog):
             updates["tutorium"] = tutorial
         if authors is not None:
             updates["authors"] = authors
+        if language is not None:
+            # Choice constrains the value to a canonical code ("en"/"de").
+            updates["language"] = language.value
         if updates:
             await self.store.set_channel_config(channel_id, **updates)
 
@@ -403,6 +431,14 @@ class Exercises(commands.Cog):
             "; ".join(_authors_to_list(eff_authors_raw) or [])
             if eff_authors_raw
             else "(default from exercise.sty)"
+        )
+
+        # Language falls back to the built-in default (English), not exercise.sty, so it
+        # gets its own source label. resolve_language gives the filename words to preview.
+        eff_lang = resolve_language(cfg.language or s.language)
+        lang_name = {"en": "English", "de": "Deutsch"}.get(eff_lang.code, eff_lang.code)
+        lang_source = (
+            "/config" if cfg.language else (".env" if s.language else "built-in default")
         )
 
         embed = discord.Embed(
@@ -441,9 +477,18 @@ class Exercises(commands.Cog):
             value=f"{eff_authors}  · Source: {_source(cfg.authors, s.authors)}",
             inline=False,
         )
+        embed.add_field(
+            name="Language",
+            value=(
+                f"{lang_name} — files like "
+                f"`{eff_lang.group_word}_…_{eff_lang.sheet_word}_NN.pdf`  "
+                f"· Source: {lang_source}"
+            ),
+            inline=False,
+        )
         embed.set_footer(
-            text="Change: /config group:… course:… tutorial:… authors:'A, 1; B, 2'  |  "
-            "Reset: /config reset:true"
+            text="Change: /config group:… course:… tutorial:… authors:'A, 1; B, 2' "
+            "language:Deutsch  |  Reset: /config reset:true"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -835,13 +880,18 @@ class Exercises(commands.Cog):
         overrides = await self._resolve_overrides(channel_id)
         group = _safe_group(overrides.group_number or read_group(project_dir))
 
+        # Output language (en/de) localizes both the filename words and the .tex itself
+        # (headings/title/babel). Same precedence as the header overrides: /config > .env.
+        language = await self._resolve_language(channel_id)
+
         # --- assemble images + .tex and compile, serialized across channels --------
         # Builds share the on-disk ex<NN>/ scratch folder and the root-level aux files, so
         # two channels (or a double-invoke) building the same sheet must not run at once. The
         # work lives in a helper run under _build_lock; it replies on error and returns None.
         rel_dir = f"ex{padded}"
         dest_dir = project_dir / rel_dir
-        jobname = f"Group_{group}_Sheet_{padded}"
+        # e.g. Group_017_Sheet_06 (en) / Gruppe_017_Blatt_06 (de).
+        jobname = f"{language.group_word}_{group}_{language.sheet_word}_{padded}"
         async with self._build_lock:
             result = await self._assemble_and_compile(
                 interaction,
@@ -854,6 +904,7 @@ class Exercises(commands.Cog):
                 selections=selections,
                 thread_by_index=thread_by_index,
                 overrides=overrides,
+                language=language,
                 jobname=jobname,
                 skip_missing=skip_missing,
             )
@@ -925,6 +976,7 @@ class Exercises(commands.Cog):
         selections: dict[int, list[Part]],
         thread_by_index: dict[int, ThreadRow],
         overrides: HeaderOverrides,
+        language: LanguageStrings,
         jobname: str,
         skip_missing: bool,
     ) -> CompileResult | None:
@@ -1028,7 +1080,7 @@ class Exercises(commands.Cog):
             return None
 
         # --- render the .tex and write it into the output folder -------------------
-        tex_source = render_tex(sheet, exercise_docs, overrides)
+        tex_source = render_tex(sheet, exercise_docs, overrides, language=language)
         tex_path = dest_dir / f"ex{padded}.tex"
         try:
             tex_path.write_text(tex_source, encoding="utf-8")

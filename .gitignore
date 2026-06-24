@@ -30,6 +30,8 @@ latex-project/ex[0-9][0-9]/
 *.out
 *.toc
 *.log
-# keep generated PDFs out of git; the bot posts them to Discord
+# keep generated PDFs out of git; the bot posts them to Discord. Both naming schemes:
+# English Group_<g>_Sheet_<NN>.pdf and German Gruppe_<g>_Blatt_<NN>.pdf (/config language).
+Group_*_Sheet_*.pdf
 Gruppe_*_Blatt_*.pdf
 !data/.gitkeep

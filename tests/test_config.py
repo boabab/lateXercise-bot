@@ -56,6 +56,7 @@ _ENV_KEYS = (
     "COURSE",
     "TUTORIUM",
     "AUTHORS",
+    "LANGUAGE",
 )
 
 
@@ -201,3 +202,41 @@ def test_header_defaults_none_when_absent(
     assert settings.course is None
     assert settings.tutorium is None
     assert settings.authors is None
+
+
+# ---------------------------------------------------------------------------
+# LANGUAGE (output language default)
+# ---------------------------------------------------------------------------
+
+
+def test_language_none_when_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unset LANGUAGE leaves Settings.language as None (bot default, English)."""
+    settings = _load(tmp_path, monkeypatch, **_BASE)
+    assert settings.language is None
+
+
+def test_language_canonical_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LANGUAGE=de / en are stored as the canonical code."""
+    assert _load(tmp_path, monkeypatch, **{**_BASE, "LANGUAGE": "de"}).language == "de"
+    assert _load(tmp_path, monkeypatch, **{**_BASE, "LANGUAGE": "en"}).language == "en"
+
+
+def test_language_aliases_normalized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Friendly spellings are normalized to the canonical code at load time."""
+    assert _load(tmp_path, monkeypatch, **{**_BASE, "LANGUAGE": "Deutsch"}).language == "de"
+    assert _load(tmp_path, monkeypatch, **{**_BASE, "LANGUAGE": "English"}).language == "en"
+
+
+def test_language_invalid_raises_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrecognized LANGUAGE is a hard, actionable error (not a silent fallback)."""
+    with pytest.raises(ConfigError) as excinfo:
+        _load(tmp_path, monkeypatch, **{**_BASE, "LANGUAGE": "klingon"})
+    assert "LANGUAGE" in str(excinfo.value)

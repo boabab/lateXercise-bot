@@ -49,7 +49,8 @@ __all__ = [
 ]
 
 # Current schema version (see _migrate). Bump when the schema changes in a breaking way.
-_SCHEMA_VERSION = 1
+#   v1 -> v2: add channel_config.language (per-channel output language).
+_SCHEMA_VERSION = 2
 
 # Sentinel for "argument not provided" in set_channel_config, so callers can distinguish
 # "leave this field unchanged" (omit it) from "clear this field" (pass None/"").
@@ -110,21 +111,26 @@ class Part:
 
 @dataclass
 class ChannelConfig:
-    """Per-channel overrides for the LaTeX header fields, set via ``/config``.
+    """Per-channel overrides for the LaTeX header/output settings, set via ``/config``.
 
     Every field is optional; ``None`` means "no override — fall back to the ``.env``
     default, then to ``exercise.sty``". ``authors`` is stored as a single string with
     entries separated by ``;`` (as typed in ``/config``); the cog splits it into lines.
+    ``language`` is the output-language code (``"en"``/``"de"``) that localizes the PDF
+    filename, headings, title, and babel language.
     """
 
     group_number: str | None = None
     course: str | None = None
     tutorium: str | None = None
     authors: str | None = None
+    language: str | None = None
 
     def is_empty(self) -> bool:
         """True when no field is set (no override exists for this channel)."""
-        return not any((self.group_number, self.course, self.tutorium, self.authors))
+        return not any(
+            (self.group_number, self.course, self.tutorium, self.authors, self.language)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +160,7 @@ CREATE TABLE IF NOT EXISTS selections (
 
 CREATE TABLE IF NOT EXISTS channel_config (
   channel_id INTEGER NOT NULL PRIMARY KEY,
-  group_number TEXT, course TEXT, tutorium TEXT, authors TEXT);
+  group_number TEXT, course TEXT, tutorium TEXT, authors TEXT, language TEXT);
 """
 
 
@@ -251,9 +257,14 @@ class Store:
         ``channel_id`` with ``legacy_channel_id`` (the bot's primary channel). A fresh database
         has no old tables, so nothing is rebuilt — only the version marker advances.
 
-        The per-table guards (skip tables that already have ``channel_id`` or don't exist, and
-        drop any leftover ``_old_*`` scratch tables first) make a re-run after an interrupted
-        migration safe.
+        v1 -> v2: add the ``language`` column to an existing ``channel_config`` table (the
+        per-channel output language). A fresh database has no ``channel_config`` yet — it is
+        created with the column straight from ``_SCHEMA`` after this migration runs — so the
+        ``ALTER`` only touches a real pre-v2 table.
+
+        The per-table guards (skip tables that already have ``channel_id``/``language`` or
+        don't exist, and drop any leftover ``_old_*`` scratch tables first) make a re-run
+        after an interrupted migration safe.
         """
         async with conn.execute("PRAGMA user_version;") as cursor:
             version = (await cursor.fetchone())[0]
@@ -329,11 +340,21 @@ class Store:
             await conn.execute("DROP TABLE guild_config;")
             migrated_any = True
 
+        # --- v1 -> v2: add channel_config.language to a pre-v2 table ------------------
+        # Guarded so it is a no-op on a fresh DB (channel_config not created yet) and on an
+        # already-v2 table (column present), keeping an interrupted re-run safe.
+        channel_config_cols = await self._table_columns(conn, "channel_config")
+        if channel_config_cols and "language" not in channel_config_cols:
+            await conn.execute("ALTER TABLE channel_config ADD COLUMN language TEXT;")
+            migrated_any = True
+
         await conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION};")
         await conn.commit()
         if migrated_any:
             _log.info(
-                "Migrated DB schema v0->v1 (re-keyed to channel_id, backfill channel=%s) for %s",
+                "Migrated DB schema to v%d (channel-keyed; channel_config.language; "
+                "backfill channel=%s) for %s",
+                _SCHEMA_VERSION,
                 backfill,
                 self._db_path,
             )
@@ -591,10 +612,10 @@ class Store:
     # -- per-channel config --------------------------------------------------
 
     async def get_channel_config(self, channel_id: int) -> ChannelConfig:
-        """Return the per-channel header overrides, or an all-``None`` config if unset."""
+        """Return the per-channel overrides, or an all-``None`` config if unset."""
         conn = self._connection
         async with conn.execute(
-            "SELECT group_number, course, tutorium, authors "
+            "SELECT group_number, course, tutorium, authors, language "
             "FROM channel_config WHERE channel_id = ?;",
             (channel_id,),
         ) as cursor:
@@ -606,6 +627,7 @@ class Store:
             course=row["course"],
             tutorium=row["tutorium"],
             authors=row["authors"],
+            language=row["language"],
         )
 
     async def set_channel_config(
@@ -616,6 +638,7 @@ class Store:
         course: str | None | object = _UNSET,
         tutorium: str | None | object = _UNSET,
         authors: str | None | object = _UNSET,
+        language: str | None | object = _UNSET,
     ) -> ChannelConfig:
         """Update only the explicitly-passed fields of a channel's config; return the result.
 
@@ -637,7 +660,7 @@ class Store:
         async with self._write_lock:
             # Read current row inside the lock so concurrent /config calls don't clobber.
             async with conn.execute(
-                "SELECT group_number, course, tutorium, authors "
+                "SELECT group_number, course, tutorium, authors, language "
                 "FROM channel_config WHERE channel_id = ?;",
                 (channel_id,),
             ) as cursor:
@@ -647,18 +670,27 @@ class Store:
                 course=row["course"] if row else None,
                 tutorium=row["tutorium"] if row else None,
                 authors=row["authors"] if row else None,
+                language=row["language"] if row else None,
             )
             new = ChannelConfig(
                 group_number=_norm(group_number, cur.group_number),
                 course=_norm(course, cur.course),
                 tutorium=_norm(tutorium, cur.tutorium),
                 authors=_norm(authors, cur.authors),
+                language=_norm(language, cur.language),
             )
             await conn.execute(
                 "INSERT OR REPLACE INTO channel_config "
-                "(channel_id, group_number, course, tutorium, authors) "
-                "VALUES (?, ?, ?, ?, ?);",
-                (channel_id, new.group_number, new.course, new.tutorium, new.authors),
+                "(channel_id, group_number, course, tutorium, authors, language) "
+                "VALUES (?, ?, ?, ?, ?, ?);",
+                (
+                    channel_id,
+                    new.group_number,
+                    new.course,
+                    new.tutorium,
+                    new.authors,
+                    new.language,
+                ),
             )
             await conn.commit()
             return new

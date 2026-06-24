@@ -33,6 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 __all__ = [
+    "DEFAULT_LANGUAGE",
+    "LanguageStrings",
+    "normalize_language",
+    "resolve_language",
     "pad_sheet",
     "label_to_paragraph",
     "label_to_filename_fragment",
@@ -47,6 +51,106 @@ __all__ = [
     "parse_log",
     "read_group",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Output language
+# ---------------------------------------------------------------------------
+#
+# The bot can render a sheet in English (default) or German. The choice flows in as a
+# per-channel ``/config`` value (falling back to the ``LANGUAGE`` env default, then to
+# ``DEFAULT_LANGUAGE``) and localizes four things at once, so a German sheet is fully
+# German rather than half-translated:
+#
+#   * the PDF **filename**  — ``Group_<g>_Sheet_<NN>`` vs ``Gruppe_<g>_Blatt_<NN>``
+#   * the **section heading** — ``\section*{Exercise N}`` vs ``\section*{Aufgabe N}``
+#   * the **title** in the header — ``Sheet <NN>`` vs ``Blatt <NN>``
+#   * the **document language** — babel ``english`` vs ``ngerman`` (hyphenation + ``\today``)
+#
+# Only ``babel`` and the title need ``exercise.sty``'s cooperation; the filename and the
+# section heading are produced entirely here. See :func:`render_tex` for how the babel
+# option and the title are injected without editing the shared style file.
+
+DEFAULT_LANGUAGE = "en"
+
+
+@dataclass(frozen=True)
+class LanguageStrings:
+    """The localizable LaTeX/text fragments for one output language.
+
+    Attributes:
+        code: Canonical short code, ``"en"`` or ``"de"``.
+        babel: The babel package option for this language (``"english"`` / ``"ngerman"``).
+            Injected into ``exercise.sty``'s ``\\RequirePackage[...]{babel}`` via the
+            ``\\exerciseLanguage`` hook (see :func:`render_tex`).
+        exercise_word: The word before the number in a section header — ``"Exercise"`` /
+            ``"Aufgabe"`` (used as ``\\section*{<exercise_word> N}``).
+        sheet_word: The word for a sheet, used both in the PDF filename and the header
+            title — ``"Sheet"`` / ``"Blatt"``.
+        group_word: The word for a group, used in the PDF filename — ``"Group"`` /
+            ``"Gruppe"``.
+    """
+
+    code: str
+    babel: str
+    exercise_word: str
+    sheet_word: str
+    group_word: str
+
+
+# The languages the bot understands, keyed by canonical code. English is the default and
+# must stay byte-for-byte identical to the pre-localization output (see render_tex), so its
+# words match what the generator and exercise.sty already emitted.
+_LANGUAGES: dict[str, LanguageStrings] = {
+    "en": LanguageStrings("en", "english", "Exercise", "Sheet", "Group"),
+    "de": LanguageStrings("de", "ngerman", "Aufgabe", "Blatt", "Gruppe"),
+}
+
+# Friendly spellings accepted from operators (``/config`` and the LANGUAGE env var) mapped
+# to a canonical code. Keys are matched case-insensitively after stripping.
+_LANGUAGE_ALIASES: dict[str, str] = {
+    "en": "en",
+    "english": "en",
+    "eng": "en",
+    "de": "de",
+    "german": "de",
+    "deutsch": "de",
+    "ger": "de",
+    "ngerman": "de",
+}
+
+
+def normalize_language(value: str | None) -> str | None:
+    """Map a language code/alias to its canonical code, or ``None`` if unrecognized.
+
+    Accepts the canonical codes (``en``/``de``) and a few friendly spellings
+    (``english``/``german``/``deutsch``/…), case-insensitively. Blank or unknown input
+    returns ``None`` so callers can distinguish "not set" / "invalid" from a real choice
+    (``config.load_settings`` uses this to reject a bad ``LANGUAGE`` loudly).
+
+    Examples:
+        >>> normalize_language("Deutsch")
+        'de'
+        >>> normalize_language("en")
+        'en'
+        >>> normalize_language("klingon") is None
+        True
+    """
+    if not value:
+        return None
+    return _LANGUAGE_ALIASES.get(value.strip().lower())
+
+
+def resolve_language(value: str | None) -> LanguageStrings:
+    """Resolve a language code/alias to its :class:`LanguageStrings`, defaulting to English.
+
+    Unlike :func:`normalize_language`, this never returns ``None``: an unset, blank, or
+    unrecognized value falls back to :data:`DEFAULT_LANGUAGE` so the build path always has
+    a usable language. Validation of operator input happens earlier (config loading,
+    ``/config`` choices), so reaching here with garbage means "use the default".
+    """
+    code = normalize_language(value)
+    return _LANGUAGES[code] if code is not None else _LANGUAGES[DEFAULT_LANGUAGE]
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +361,7 @@ def render_tex(
     sheet: int,
     exercises: list[ExerciseDoc],
     overrides: HeaderOverrides | None = None,
+    language: str | LanguageStrings | None = None,
 ) -> str:
     """Return the full ``.tex`` document as a string.
 
@@ -295,11 +400,21 @@ def render_tex(
         overrides: Optional per-group header overrides (group/course/tutorium/authors).
             Each set field emits a ``\\renewcommand`` after ``\\usepackage{exercise}``;
             unset fields keep ``exercise.sty``'s defaults.
+        language: Output language as a code/alias (``"en"``/``"de"``/…) or a resolved
+            :class:`LanguageStrings`; ``None`` means :data:`DEFAULT_LANGUAGE` (English).
+            English output is byte-identical to the un-localized generator; a non-default
+            language additionally emits a ``\\exerciseLanguage`` hint (before
+            ``\\usepackage{exercise}``, picked up by its ``babel`` load) and a localized
+            ``\\exerciseTitle`` (after it), and localizes the ``\\section*`` heading word.
 
     Returns:
         The complete document text, ending with a trailing newline.
     """
     padded = pad_sheet(sheet)
+    # Accept either a pre-resolved LanguageStrings (the cog already has one for the
+    # filename) or a raw code/alias (tests, env values); both collapse to LanguageStrings.
+    lang = language if isinstance(language, LanguageStrings) else resolve_language(language)
+    localized = lang.code != DEFAULT_LANGUAGE
 
     # Preamble. Mirrors example.tex / ex*.tex so the generated file is indistinguishable
     # in style from the example sheet, with ONE robustness shim:
@@ -319,12 +434,29 @@ def render_tex(
         "% Work around a latent bug in exercise.sty (renewcommand on an undefined",
         "% \\exerciseTitle); define it first so \\usepackage{exercise} can renew it.",
         "\\providecommand{\\exerciseTitle}{}",
+    ]
+    # For a non-default language, set \exerciseLanguage BEFORE loading the package: its
+    # \RequirePackage[\exerciseLanguage]{babel} reads it (default english applies otherwise).
+    if localized:
+        lines += [
+            "% Output language: exercise.sty feeds \\exerciseLanguage to babel's option",
+            "% list, so it must be defined before the package is loaded.",
+            f"\\providecommand{{\\exerciseLanguage}}{{{lang.babel}}}",
+        ]
+    lines += [
         "\\usepackage{exercise}",
         f"\\setExerciseSheet{{{padded}}}",
     ]
     # Per-group header overrides (group number / course / tutorium / authors), emitted
     # after the package defines the commands and before \exerciseMakeHeaders uses them.
     lines.extend(_render_header_overrides(overrides))
+    # exercise.sty hard-codes the English title ("Sheet <NN>"); for a non-default language
+    # renew it to the localized word, after the package (and \ExerciseSheet) exist and
+    # before \exerciseMakeHeaders consumes \exerciseTitle.
+    if localized:
+        lines.append(
+            f"\\renewcommand{{\\exerciseTitle}}{{{lang.sheet_word} \\ExerciseSheet}}"
+        )
     lines.extend([
         "\\exerciseMakeHeaders",
         "",
@@ -335,8 +467,9 @@ def render_tex(
     ordered = sorted(exercises, key=lambda ex: ex.index)
 
     for ex_pos, exercise in enumerate(ordered):
-        # Section header, then a blank line, exactly like the example sheet.
-        lines.append(f"\\section*{{Exercise {exercise.index}}}")
+        # Section header, then a blank line, exactly like the example sheet. The word is
+        # localized ("Exercise" / "Aufgabe"); English keeps the original wording.
+        lines.append(f"\\section*{{{lang.exercise_word} {exercise.index}}}")
         lines.append("")
 
         for part in exercise.parts:

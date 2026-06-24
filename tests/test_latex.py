@@ -30,14 +30,18 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from bot.latex import (  # noqa: E402  (path setup must precede this import)
+    DEFAULT_LANGUAGE,
     ExerciseDoc,
     FigurePart,
     HeaderOverrides,
+    LanguageStrings,
     label_to_filename_fragment,
     label_to_paragraph,
+    normalize_language,
     pad_sheet,
     parse_log,
     render_tex,
+    resolve_language,
 )
 
 
@@ -460,3 +464,99 @@ def test_render_tex_blank_authors_entries_dropped() -> None:
     # Only one author -> no line break inside the authors block.
     authors_block = tex.split("\\renewcommand{\\exerciseAuthors}{", 1)[1].split("}", 1)[0]
     assert "\\\\" not in authors_block
+
+
+# ===========================================================================
+# Output language — normalize_language / resolve_language
+# ===========================================================================
+
+def test_normalize_language_canonical_and_aliases() -> None:
+    assert normalize_language("en") == "en"
+    assert normalize_language("de") == "de"
+    # Friendly spellings, case-insensitive, whitespace-tolerant.
+    assert normalize_language("English") == "en"
+    assert normalize_language("  Deutsch ") == "de"
+    assert normalize_language("GERMAN") == "de"
+    assert normalize_language("ngerman") == "de"
+
+
+def test_normalize_language_unknown_and_blank_return_none() -> None:
+    assert normalize_language("klingon") is None
+    assert normalize_language("") is None
+    assert normalize_language(None) is None
+
+
+def test_resolve_language_defaults_to_english() -> None:
+    # Unset / unrecognized always yields the default language, never None.
+    for value in (None, "", "klingon"):
+        lang = resolve_language(value)
+        assert isinstance(lang, LanguageStrings)
+        assert lang.code == DEFAULT_LANGUAGE == "en"
+
+
+def test_resolve_language_words() -> None:
+    en = resolve_language("en")
+    de = resolve_language("de")
+    # The filename words the cog uses for the jobname.
+    assert (en.group_word, en.sheet_word) == ("Group", "Sheet")
+    assert (de.group_word, de.sheet_word) == ("Gruppe", "Blatt")
+    assert (en.exercise_word, en.babel) == ("Exercise", "english")
+    assert (de.exercise_word, de.babel) == ("Aufgabe", "ngerman")
+
+
+# ===========================================================================
+# render_tex — language (English default vs full German mode)
+# ===========================================================================
+
+def test_render_tex_default_language_is_english_and_unlocalized() -> None:
+    # No language argument == English, byte-for-byte as before localization existed:
+    # English wording, and none of the German-mode hooks are emitted.
+    tex = render_tex(6, _doc())
+    assert "\\section*{Exercise 1}" in tex
+    assert "Aufgabe" not in tex and "Blatt" not in tex and "ngerman" not in tex
+    # The babel hook and a title \renewcommand are German-mode only.
+    assert "\\exerciseLanguage" not in tex
+    assert "\\renewcommand{\\exerciseTitle}" not in tex
+
+
+def test_render_tex_explicit_english_matches_default() -> None:
+    # Passing "en" explicitly must not change the output vs. the default.
+    assert render_tex(6, _doc(), language="en") == render_tex(6, _doc())
+
+
+def test_render_tex_german_localizes_headings() -> None:
+    tex = render_tex(6, _doc(), language="de")
+    assert "\\section*{Aufgabe 1}" in tex
+    assert "\\section*{Exercise 1}" not in tex
+
+
+def test_render_tex_german_sets_babel_before_package() -> None:
+    # The \exerciseLanguage hook must precede \usepackage{exercise} so babel reads it.
+    tex = render_tex(6, _doc(), language="de")
+    lines = tex.splitlines()
+    lang_line = lines.index("\\providecommand{\\exerciseLanguage}{ngerman}")
+    pkg_line = lines.index("\\usepackage{exercise}")
+    assert lang_line < pkg_line
+
+
+def test_render_tex_german_renews_title_after_package() -> None:
+    # The localized title ("Blatt <NN>") must be renewed AFTER the package defines
+    # \exerciseTitle and BEFORE \exerciseMakeHeaders consumes it.
+    tex = render_tex(6, _doc(), language="de")
+    lines = tex.splitlines()
+    title_line = lines.index("\\renewcommand{\\exerciseTitle}{Blatt \\ExerciseSheet}")
+    pkg_line = lines.index("\\usepackage{exercise}")
+    headers_line = lines.index("\\exerciseMakeHeaders")
+    assert pkg_line < title_line < headers_line
+
+
+def test_render_tex_accepts_resolved_language_object() -> None:
+    # The cog passes a LanguageStrings (already resolved for the filename); render_tex
+    # must accept it directly, equivalently to the code string.
+    de = resolve_language("de")
+    assert render_tex(6, _doc(), language=de) == render_tex(6, _doc(), language="de")
+
+
+def test_render_tex_german_aliases_resolve() -> None:
+    # A friendly spelling routes to the same German output as the canonical code.
+    assert render_tex(6, _doc(), language="Deutsch") == render_tex(6, _doc(), language="de")

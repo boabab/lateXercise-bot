@@ -44,10 +44,13 @@
 % Language + encoding
 % If you use LuaLaTeX/XeLaTeX, do NOT load inputenc.
 \RequirePackage[utf8]{inputenc}
-% Language toggle: keep exactly one of the two lines below uncommented.
-% Default is English; switch to German by swapping which line is active.
-\RequirePackage[english]{babel}
-% \RequirePackage[ngerman]{babel}
+% Language. Defaults to English; the lateXercise bot selects it per build (via /config
+% language:de or the LANGUAGE env default) by defining \exerciseLanguage *before*
+% \usepackage{exercise}. \providecommand keeps "english" only when nothing set it; the
+% \expandafter pair expands \exerciseLanguage to its text before babel reads its options.
+% To switch the language by hand instead, change "english" below to "ngerman".
+\providecommand{\exerciseLanguage}{english}
+\expandafter\RequirePackage\expandafter[\exerciseLanguage]{babel}
 
 % Math and typography
 \RequirePackage{amsmath,mathtools,amssymb,microtype,enumitem,multicol,booktabs}
