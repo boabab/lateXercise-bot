@@ -3,13 +3,15 @@
 This module owns all SQLite access. Everything is keyed by **channel_id** — each operating
 channel is an independent *submission group* with its own sheets, picks, and header config.
 (Discord channel IDs are globally unique snowflakes, so the channel id alone is a sufficient
-key; the parent guild is not stored.) It holds four kinds of data:
+key; the parent guild is not stored.) It holds five kinds of data:
 
 * ``sheets``         — one row per ``(channel_id, sheet)`` exercise sheet created via ``/sheet``.
 * ``threads``        — the *mapping* from an exercise index to its Discord thread, written at
                        creation so ``/build`` never has to parse (user-renamable) thread names.
 * ``selections``     — one row per *image*, grouped into ordered parts, written by ``/pick``.
 * ``channel_config`` — per-channel LaTeX header overrides (group/course/tutorium/authors).
+* ``subscriptions``  — one row per ``(channel_id, user_id)`` member who opted in (via
+                       ``/subscribe``) to be auto-added to every new thread ``/sheet`` creates.
 
 Concurrency model: multiple people may run ``/pick`` simultaneously, so the store must be
 multi-writer safe. We open exactly ONE shared :class:`aiosqlite.Connection` in
@@ -161,6 +163,14 @@ CREATE TABLE IF NOT EXISTS selections (
 CREATE TABLE IF NOT EXISTS channel_config (
   channel_id INTEGER NOT NULL PRIMARY KEY,
   group_number TEXT, course TEXT, tutorium TEXT, authors TEXT, language TEXT);
+
+-- One row per member who opted in to be auto-added to a channel's new threads. Purely
+-- additive: `CREATE TABLE IF NOT EXISTS` here creates it on every init for both fresh and
+-- pre-existing databases, so (unlike the v1->v2 column add) it needs no _migrate step.
+CREATE TABLE IF NOT EXISTS subscriptions (
+  channel_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (channel_id, user_id));
 """
 
 
@@ -694,6 +704,61 @@ class Store:
             )
             await conn.commit()
             return new
+
+    # -- subscriptions -------------------------------------------------------
+
+    async def add_subscriber(self, channel_id: int, user_id: int) -> bool:
+        """Subscribe a member to a channel's future threads.
+
+        Returns ``True`` when the row is inserted, ``False`` when the member was already
+        subscribed (the ``(channel_id, user_id)`` primary key conflicts). Mirrors
+        :meth:`create_sheet`: the IntegrityError from the PK conflict is caught so callers get
+        a simple boolean to drive their "subscribed" vs "already subscribed" message.
+        """
+        conn = self._connection
+        async with self._write_lock:
+            try:
+                await conn.execute(
+                    "INSERT INTO subscriptions (channel_id, user_id) VALUES (?, ?);",
+                    (channel_id, user_id),
+                )
+                await conn.commit()
+                return True
+            except aiosqlite.IntegrityError:
+                # Already subscribed: roll back the no-op insert and report "no change".
+                await conn.rollback()
+                return False
+
+    async def remove_subscriber(self, channel_id: int, user_id: int) -> bool:
+        """Unsubscribe a member from a channel's future threads.
+
+        Returns ``True`` if a subscription row was removed, ``False`` if the member was not
+        subscribed. ``rowcount`` is exact here because the DELETE is constrained by a WHERE
+        clause (SQLite only returns ``-1`` for an unqualified ``DELETE FROM table``).
+        """
+        conn = self._connection
+        async with self._write_lock:
+            cursor = await conn.execute(
+                "DELETE FROM subscriptions WHERE channel_id = ? AND user_id = ?;",
+                (channel_id, user_id),
+            )
+            await conn.commit()
+            return cursor.rowcount > 0
+
+    async def get_subscribers(self, channel_id: int) -> list[int]:
+        """Return the user ids subscribed to a channel, oldest subscription first.
+
+        Ordered by ``created_at`` then ``user_id`` so the list is stable for display and so
+        ``/sheet`` adds members to each new thread in a deterministic order.
+        """
+        conn = self._connection
+        async with conn.execute(
+            "SELECT user_id FROM subscriptions WHERE channel_id = ? "
+            "ORDER BY created_at ASC, user_id ASC;",
+            (channel_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [row["user_id"] for row in rows]
 
     # -- reconstruction helper ----------------------------------------------
 
