@@ -24,17 +24,22 @@ number, course, tutorial, and names with no code edits.
 | `/help` | anywhere | Shows the workflow and every command in Discord. |
 | `/sheet <sheet> <num_exercises>` | an allowed channel | Creates `num_exercises` public threads (`Sheet 06 · Exercise 1 … N`) and posts a hub message linking them. Sheets are scoped to the channel they're created in. |
 | `/pick` | inside an exercise thread | Lists the thread's uploaded images as a numbered gallery; you map sub-parts to image numbers (e.g. `a: 2`, `b: 5, 6`, `a b: 3`, or `: 2` for a whole-exercise photo). Re-running replaces that exercise's selection. The same image number on **consecutive** parts (`a: 2`, `b: 2`) is auto-combined into one `(a) (b)` figure instead of repeating the image; if the run is interrupted (`a: 2`, `b: 2`, `c: 7`, `d: 2`) the image is repeated for the later part. |
-| `/build <sheet> [skip_missing]` | an allowed channel | Re-fetches each picked image, generates `ex<NN>/ex<NN>.tex`, compiles from the project root, and posts `Group_<group>_Sheet_<NN>.pdf` into the channel. |
-| `/config [group] [course] [tutorial] [authors] [reset]` | an allowed channel | View or set the **per-channel** header values (group number, course, tutorial, authors) used in the PDF header and filename. Each channel keeps its own values, so different groups can differ. No code/`exercise.sty` edits needed. |
+| `/build <sheet> [skip_missing]` | an allowed channel | Re-fetches each picked image, generates `ex<NN>/ex<NN>.tex`, compiles from the project root, and posts `Group_<group>_Sheet_<NN>.pdf` (or `Gruppe_<group>_Blatt_<NN>.pdf` in German) into the channel. |
+| `/config [group] [course] [tutorial] [authors] [language] [reset]` | an allowed channel | View or set the **per-channel** header values (group number, course, tutorial, authors) and output **language** (English/Deutsch) used in the PDF header and filename. Each channel keeps its own values, so different groups can differ. No code/`exercise.sty` edits needed. |
 
-## Customization (header & filename)
+## Customization (header, language & filename)
 
-The group number, course, tutorial label, and author list can be set **per channel** without
-editing `exercise.sty` — either live via `/config` (run it in a channel to view/set that
-channel's values) or as global defaults in `.env` (`GROUP_NUMBER`, `COURSE`, `TUTORIUM`,
-`AUTHORS`). Precedence: `/config` (per channel) > `.env` (global) > `exercise.sty`. The bot
-injects the chosen values into the *generated* `.tex` via `\renewcommand`, so the shared style
-file is never touched. See [SETUP.md](SETUP.md#6-customize-it-for-your-group).
+The group number, course, tutorial label, author list, and **output language** can be set
+**per channel** without editing `exercise.sty` — either live via `/config` (run it in a channel
+to view/set that channel's values) or as global defaults in `.env` (`GROUP_NUMBER`, `COURSE`,
+`TUTORIUM`, `AUTHORS`, `LANGUAGE`). Precedence: `/config` (per channel) > `.env` (global) >
+`exercise.sty`. The bot injects the chosen values into the *generated* `.tex` via
+`\renewcommand`, so the shared style file is never touched.
+
+`/config language:Deutsch` switches a channel to a fully German sheet: the filename becomes
+`Gruppe_<group>_Blatt_<NN>.pdf`, section headings read **Aufgabe N**, the title reads
+**Blatt NN**, and the document uses German babel (hyphenation and dates like *24. Juni 2026*).
+English is the default. See [SETUP.md](SETUP.md#6-customize-it-for-your-group).
 
 ## How it fits the existing LaTeX project
 

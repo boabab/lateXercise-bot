@@ -30,6 +30,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .latex import normalize_language
+
 _log = logging.getLogger(__name__)
 
 __all__ = ["Settings", "ConfigError", "load_settings"]
@@ -62,6 +64,9 @@ class Settings:
         course: Optional default for the course header (``\\exerciseCourse``).
         tutorium: Optional default for the tutorium header (``\\exerciseGroup``).
         authors: Optional default author list, ``;``-separated (``\\exerciseAuthors``).
+        language: Optional default output language, canonical code ``"en"``/``"de"``
+            (validated/normalized at load). ``None`` when unset → the bot's built-in
+            default (English). Overridden per-channel by ``/config language:…``.
     """
 
     discord_token: str
@@ -77,6 +82,7 @@ class Settings:
     course: str | None = None
     tutorium: str | None = None
     authors: str | None = None
+    language: str | None = None  # canonical "en"/"de"; None = bot default (English)
 
 
 class ConfigError(Exception):
@@ -287,6 +293,22 @@ def load_settings(env_path: str | Path = ".env") -> Settings:
     tutorium = _get_clean("TUTORIUM")
     authors = _get_clean("AUTHORS")
 
+    # --- optional: LANGUAGE (default output language: en/de) ----------------------
+    # Blank/unset -> None (bot default, English). A set-but-unrecognized value is a hard
+    # error (almost certainly a typo) so the operator fixes it instead of silently getting
+    # English. Stored normalized to the canonical code so downstream code never re-parses.
+    language: str | None = None
+    language_raw = _get_clean("LANGUAGE")
+    if language_raw is not None:
+        normalized = normalize_language(language_raw)
+        if normalized is None:
+            errors.append(
+                f"LANGUAGE must be one of en/de (aliases english/german/deutsch accepted), "
+                f"got {language_raw!r}."
+            )
+        else:
+            language = normalized
+
     # --- raise everything at once -------------------------------------------------
     if errors:
         bullet_list = "\n".join(f"  - {message}" for message in errors)
@@ -316,4 +338,5 @@ def load_settings(env_path: str | Path = ".env") -> Settings:
         course=course,
         tutorium=tutorium,
         authors=authors,
+        language=language,
     )

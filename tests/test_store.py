@@ -525,6 +525,37 @@ def test_channel_config_is_per_channel(tmp_path: Path) -> None:
     _run_with_store(tmp_path / "cfg.sqlite3", body)
 
 
+def test_channel_config_language_round_trip(tmp_path: Path) -> None:
+    async def body(store: Store) -> None:
+        returned = await store.set_channel_config(CHANNEL, language="de")
+        assert returned.language == "de"
+        assert not returned.is_empty()  # language alone counts as a config
+        cfg = await store.get_channel_config(CHANNEL)
+        assert cfg.language == "de"
+
+    _run_with_store(tmp_path / "cfg.sqlite3", body)
+
+
+def test_channel_config_language_independent_of_other_fields(tmp_path: Path) -> None:
+    async def body(store: Store) -> None:
+        # Setting language must not clear group/course, and vice versa.
+        await store.set_channel_config(CHANNEL, group_number="017", course="GLOIN")
+        await store.set_channel_config(CHANNEL, language="de")
+        cfg = await store.get_channel_config(CHANNEL)
+        assert (cfg.group_number, cfg.course, cfg.language) == ("017", "GLOIN", "de")
+        # Now change only the group number; language survives untouched.
+        await store.set_channel_config(CHANNEL, group_number="099")
+        cfg = await store.get_channel_config(CHANNEL)
+        assert (cfg.group_number, cfg.language) == ("099", "de")
+        # Clearing language leaves the rest intact.
+        await store.set_channel_config(CHANNEL, language=None)
+        cfg = await store.get_channel_config(CHANNEL)
+        assert cfg.language is None
+        assert cfg.group_number == "099" and cfg.course == "GLOIN"
+
+    _run_with_store(tmp_path / "cfg.sqlite3", body)
+
+
 # ---------------------------------------------------------------------------
 # migration — a v0 guild-keyed database is re-keyed to channel_id on init
 # ---------------------------------------------------------------------------
@@ -647,18 +678,90 @@ def test_migrates_v0_guild_keyed_db_to_channel_id(tmp_path: Path) -> None:
     conn = sqlite3.connect(db_path)
     try:
         (version,) = conn.execute("PRAGMA user_version;").fetchone()
-        assert version == 1
+        assert version == 2  # v0 migrates straight through to the current version
 
         sheet_cols = {row[1] for row in conn.execute("PRAGMA table_info(sheets);").fetchall()}
         assert "channel_id" in sheet_cols
         assert "guild_id" not in sheet_cols
 
-        # guild_config must be gone; channel_config must exist instead.
+        # guild_config must be gone; channel_config must exist instead, and the v1->v2 step
+        # must have added the language column even though channel_config was just created
+        # from the old guild_config during the same migration pass.
         guild_config_cols = conn.execute("PRAGMA table_info(guild_config);").fetchall()
         assert guild_config_cols == []
         channel_config_cols = {
             row[1] for row in conn.execute("PRAGMA table_info(channel_config);").fetchall()
         }
         assert "channel_id" in channel_config_cols
+        assert "language" in channel_config_cols
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# migration — a v1 database gains the channel_config.language column on init
+# ---------------------------------------------------------------------------
+
+
+def _build_v1_database(db_path: Path, channel_id: int) -> None:
+    """Hand-build a v1 (channel-keyed, pre-language) database with one config row.
+
+    This is the production schema as it stood at ``_SCHEMA_VERSION == 1``: already keyed by
+    ``channel_id``, but with a four-column ``channel_config`` (no ``language``). ``init``
+    must add the column without disturbing the existing values.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE channel_config (
+              channel_id INTEGER NOT NULL PRIMARY KEY,
+              group_number TEXT, course TEXT, tutorium TEXT, authors TEXT);
+            """
+        )
+        conn.execute(
+            "INSERT INTO channel_config (channel_id, group_number, course, tutorium, authors) "
+            "VALUES (?, ?, ?, ?, ?);",
+            (channel_id, "017", "GLOIN", "Tut 3", "Anna, 1; Ben, 2"),
+        )
+        conn.execute("PRAGMA user_version = 1;")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_migrates_v1_db_adds_language_column(tmp_path: Path) -> None:
+    """A v1 database gains ``channel_config.language`` (NULL for existing rows) on ``init``.
+
+    The existing override values must survive, the new column must read as ``None`` for the
+    pre-existing row, a fresh language can be set afterwards, and the version advances to 2.
+    """
+    channel = 555_444_333
+    db_path = tmp_path / "v1_migrate.sqlite3"
+    _build_v1_database(db_path, channel)
+
+    async def _main() -> None:
+        store = Store(db_path)
+        await store.init()
+        try:
+            cfg = await store.get_channel_config(channel)
+            # Pre-existing values preserved; language defaults to NULL/None.
+            assert cfg.group_number == "017"
+            assert cfg.course == "GLOIN"
+            assert cfg.language is None
+            # The new column is writable end-to-end after the migration.
+            await store.set_channel_config(channel, language="de")
+            assert (await store.get_channel_config(channel)).language == "de"
+        finally:
+            await store.close()
+
+    asyncio.run(_main())
+
+    conn = sqlite3.connect(db_path)
+    try:
+        (version,) = conn.execute("PRAGMA user_version;").fetchone()
+        assert version == 2
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(channel_config);").fetchall()}
+        assert "language" in cols
     finally:
         conn.close()
