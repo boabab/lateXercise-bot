@@ -26,6 +26,20 @@ number, course, tutorial, and names with no code edits.
 | `/pick` | inside an exercise thread | Lists the thread's uploaded images as a numbered gallery; you map sub-parts to image numbers (e.g. `a: 2`, `b: 5, 6`, `a b: 3`, or `: 2` for a whole-exercise photo). Re-running replaces that exercise's selection. The same image number on **consecutive** parts (`a: 2`, `b: 2`) is auto-combined into one `(a) (b)` figure instead of repeating the image; if the run is interrupted (`a: 2`, `b: 2`, `c: 7`, `d: 2`) the image is repeated for the later part. |
 | `/build <sheet> [skip_missing]` | an allowed channel | Re-fetches each picked image, generates `ex<NN>/ex<NN>.tex`, compiles from the project root, and posts `Group_<group>_Sheet_<NN>.pdf` (or `Gruppe_<group>_Blatt_<NN>.pdf` in German) into the channel. |
 | `/config [group] [course] [tutorial] [authors] [language] [reset]` | an allowed channel | View or set the **per-channel** header values (group number, course, tutorial, authors) and output **language** (English/Deutsch) used in the PDF header and filename. Each channel keeps its own values, so different groups can differ. No code/`exercise.sty` edits needed. |
+| `/subscribe [user]` | an allowed channel (or its threads) | Opt in to be **auto-added to every new exercise thread** `/sheet` creates in that channel. With no `user` you subscribe yourself; `user:@name` (needs **Manage Threads**) subscribes someone else. Subscriptions are scoped per channel. |
+| `/unsubscribe [user]` | an allowed channel | Stop being auto-added to future threads (yourself, or someone else with **Manage Threads**). Threads you're already in are unaffected. |
+| `/subscribers` | an allowed channel | List the members who will be added to new threads in that channel. |
+
+## Thread subscriptions
+
+Members can opt in to be **automatically added to every new exercise thread** in a channel:
+they run `/subscribe` once (or a moderator with **Manage Threads** runs `/subscribe user:@name`),
+and from then on each thread `/sheet` creates in that channel adds them as a thread member, so
+Discord notifies them of activity. The list is **per channel**, opt-in, and managed with
+`/unsubscribe` and `/subscribers`. Discord has no native "follow all future threads" toggle a
+bot can set, so the bot keeps this list itself and adds members on creation — this needs **no
+privileged intents** (it adds members by id), so the bot keeps running with only the gateway
+intents it already uses.
 
 ## Customization (header, language & filename)
 
@@ -127,7 +141,7 @@ bot/
   latex.py          framework-free .tex generation + compile + log parsing
   images.py         attachment download, magic-byte format check, naming, downscale
   ui.py             discord.ui pick widgets + the pure pick-spec parser
-  cogs/exercises.py /help, /config, /sheet, /pick, /build app commands
+  cogs/exercises.py /help, /config, /sheet, /pick, /build, /subscribe app commands
 tests/              pytest: latex, store (+migration), config, pick-spec parser, image helpers
 ```
 

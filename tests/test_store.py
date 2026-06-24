@@ -765,3 +765,90 @@ def test_migrates_v1_db_adds_language_column(tmp_path: Path) -> None:
         assert "language" in cols
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# subscriptions — per-channel thread auto-subscribe lists
+# ---------------------------------------------------------------------------
+
+
+def test_add_subscriber_returns_true_then_false_on_duplicate(tmp_path: Path) -> None:
+    """First subscribe of a ``(channel, user)`` returns True; a duplicate returns False.
+
+    The duplicate is rejected by the ``(channel_id, user_id)`` primary key and surfaces as a
+    plain ``False`` (no IntegrityError leaks out), so the cog can say "already subscribed".
+    """
+
+    async def body(store: Store) -> None:
+        assert await store.add_subscriber(CHANNEL, user_id=42) is True
+        # Same (channel, user) again -> rejected by the PK guard, not an error.
+        assert await store.add_subscriber(CHANNEL, user_id=42) is False
+        # A different user in the same channel is independent.
+        assert await store.add_subscriber(CHANNEL, user_id=43) is True
+        # Inserted ascending, so both ordering keys agree on [42, 43].
+        assert await store.get_subscribers(CHANNEL) == [42, 43]
+
+    _run_with_store(tmp_path / "subs_dup.sqlite3", body)
+
+
+def test_remove_subscriber_reports_whether_a_row_was_deleted(tmp_path: Path) -> None:
+    """``remove_subscriber`` returns True only when it actually removed a subscription."""
+
+    async def body(store: Store) -> None:
+        # Removing someone who isn't subscribed is a no-op -> False.
+        assert await store.remove_subscriber(CHANNEL, user_id=42) is False
+
+        await store.add_subscriber(CHANNEL, user_id=42)
+        # Now present -> the delete removes one row -> True.
+        assert await store.remove_subscriber(CHANNEL, user_id=42) is True
+        # Gone for good: the list is empty and a second remove is False again.
+        assert await store.get_subscribers(CHANNEL) == []
+        assert await store.remove_subscriber(CHANNEL, user_id=42) is False
+
+    _run_with_store(tmp_path / "subs_remove.sqlite3", body)
+
+
+def test_get_subscribers_orders_ascending_and_scoped_to_channel(tmp_path: Path) -> None:
+    """``get_subscribers`` returns a stable ascending list, scoped to one channel.
+
+    Users are inserted in ascending id order so the ``created_at``-then-``user_id`` ordering is
+    deterministic regardless of whether the inserts land in the same clock second.
+    """
+
+    other = 999_000_111
+
+    async def body(store: Store) -> None:
+        # Empty channel -> empty list.
+        assert await store.get_subscribers(CHANNEL) == []
+
+        for uid in (100, 200, 300):
+            assert await store.add_subscriber(CHANNEL, uid) is True
+        # A subscriber in a different channel must not leak into this one.
+        assert await store.add_subscriber(other, 100) is True
+
+        assert await store.get_subscribers(CHANNEL) == [100, 200, 300]
+        assert await store.get_subscribers(other) == [100]
+
+    _run_with_store(tmp_path / "subs_order.sqlite3", body)
+
+
+def test_subscriptions_independent_across_channels(tmp_path: Path) -> None:
+    """The same user can be subscribed in one channel and not another, independently."""
+
+    chan_a = 555_000_001
+    chan_b = 555_000_002
+
+    async def body(store: Store) -> None:
+        await store.add_subscriber(chan_a, user_id=7)
+        await store.add_subscriber(chan_a, user_id=8)
+        await store.add_subscriber(chan_b, user_id=7)
+
+        assert await store.get_subscribers(chan_a) == [7, 8]
+        assert await store.get_subscribers(chan_b) == [7]
+
+        # Unsubscribing in one channel leaves the other channel's row intact.
+        assert await store.remove_subscriber(chan_a, user_id=7) is True
+        assert await store.get_subscribers(chan_a) == [8]
+        assert await store.get_subscribers(chan_b) == [7]
+
+    _run_with_store(tmp_path / "subs_two_channels.sqlite3", body)

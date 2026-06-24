@@ -232,6 +232,54 @@ class Exercises(commands.Cog):
         cfg = await self.store.get_channel_config(channel_id)
         return resolve_language(cfg.language or self.settings.language)
 
+    async def _subscription_target(
+        self, interaction: discord.Interaction, user: discord.Member | None
+    ) -> discord.Member | discord.User | None:
+        """Resolve who a ``/subscribe`` / ``/unsubscribe`` call acts on, enforcing the gate.
+
+        Self-service (``user`` omitted, or ``user`` *is* the caller) is always allowed. Acting
+        on **another** member is restricted to callers with the *Manage Threads* permission
+        (Administrators have it implicitly); anyone else gets an ephemeral refusal and ``None``
+        so the command aborts. The returned object always exposes ``.id`` and ``.mention``.
+        """
+        caller = interaction.user
+        if user is None or user.id == caller.id:
+            return caller
+        # Targeting someone else is a moderation action -> require Manage Threads.
+        perms = getattr(caller, "guild_permissions", None)
+        if perms is None or not perms.manage_threads:
+            await self._reply_ephemeral(
+                interaction,
+                "Only members with **Manage Threads** can subscribe or unsubscribe someone "
+                "else. Use `/subscribe` with no `user` to manage your own subscription.",
+            )
+            return None
+        return user
+
+    async def _add_subscribers_to_thread(
+        self, thread: discord.Thread, user_ids: list[int]
+    ) -> int:
+        """Add each subscribed member to *thread* (best-effort); return how many were added.
+
+        Uses :class:`discord.Object` so it never has to fetch a member (and so never needs the
+        privileged *Members* intent): ``Thread.add_user`` is a REST call keyed by id. Adding a
+        member to a public thread makes them a thread member, so Discord notifies them of new
+        messages there. Per-user failures (member left the guild, lost channel access, or a
+        transient HTTP error) are logged and skipped so one bad id never blocks the others or
+        the surrounding ``/sheet``.
+        """
+        added = 0
+        for user_id in user_ids:
+            try:
+                await thread.add_user(discord.Object(id=user_id))
+            except discord.HTTPException:
+                logger.warning(
+                    "Could not add subscriber %s to thread %s", user_id, thread.id
+                )
+            else:
+                added += 1
+        return added
+
     # ------------------------------------------------------------------
     # /help
     # ------------------------------------------------------------------
@@ -313,6 +361,17 @@ class Exercises(commands.Cog):
                 "title *Blatt*, German date) and names it `Gruppe_…_Blatt_NN.pdf`.\n"
                 "With no arguments `/config` shows the current configuration; "
                 "`/config reset:true` resets it."
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="/subscribe · /unsubscribe · /subscribers",
+            value=(
+                "Get **auto-added to every new exercise thread** in this channel. "
+                "Run `/subscribe` to opt yourself in (`/unsubscribe` to opt out); from "
+                "then on `/sheet` adds you to each thread it creates.\n"
+                "Members with **Manage Threads** can (un)subscribe someone else via "
+                "`/subscribe user:@name`. `/subscribers` lists who's opted in."
             ),
             inline=False,
         )
@@ -612,10 +671,23 @@ class Exercises(commands.Cog):
         hub_message = await channel.send(hub_content)
         await self.store.set_hub_message(channel_id, sheet, hub_message.id)
 
+        # --- add the channel's opted-in subscribers to every new thread ------------
+        # Best-effort and isolated from the creation loop above: a member who left or can no
+        # longer see the channel is just skipped (see _add_subscribers_to_thread). Opt in via
+        # `/subscribe`. The same subscriber set is added to each thread.
+        subscriber_ids = await self.store.get_subscribers(channel_id)
+        for thread in created_threads:
+            await self._add_subscribers_to_thread(thread, subscriber_ids)
+        sub_note = (
+            f" {len(subscriber_ids)} subscriber(s) were added to each thread."
+            if subscriber_ids
+            else ""
+        )
+
         # --- ephemeral summary back to the invoker ---------------------------------
         await interaction.followup.send(
             f"Sheet {padded} created: {num_exercises} thread(s) created and a "
-            f"hub post posted.",
+            f"hub post posted.{sub_note}",
             ephemeral=True,
         )
 
@@ -1227,6 +1299,122 @@ class Exercises(commands.Cog):
             if attachment.id == attachment_id:
                 return attachment
         return None
+
+    # ------------------------------------------------------------------
+    # /subscribe, /unsubscribe, /subscribers
+    # ------------------------------------------------------------------
+
+    @app_commands.command(
+        name="subscribe",
+        description="Get auto-added to every new exercise thread in this channel.",
+    )
+    @app_commands.describe(
+        user="(Manage Threads only) subscribe this member instead of yourself.",
+    )
+    async def subscribe(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member | None = None,
+    ) -> None:
+        """Opt a member in to this channel's future exercise threads.
+
+        Runs in an operating channel (or one of its threads); the subscription is stored per
+        operating channel. With no ``user`` the caller subscribes themselves; passing ``user``
+        subscribes someone else and requires *Manage Threads*. Whenever ``/sheet`` later
+        creates threads here, every subscriber is added to each new thread.
+        """
+        channel_id = await self._operating_channel(interaction)
+        if channel_id is None:
+            return
+        target = await self._subscription_target(interaction, user)
+        if target is None:
+            return
+
+        added = await self.store.add_subscriber(channel_id, target.id)
+        is_self = target.id == interaction.user.id
+        if added and is_self:
+            msg = (
+                "✅ You're subscribed — I'll add you to every new exercise thread in "
+                f"<#{channel_id}> as soon as it's created with `/sheet`."
+            )
+        elif added:
+            msg = (
+                f"✅ {target.mention} is subscribed — they'll be added to every new "
+                f"exercise thread in <#{channel_id}>."
+            )
+        elif is_self:
+            msg = f"You're already subscribed to new threads in <#{channel_id}>."
+        else:
+            msg = (
+                f"{target.mention} is already subscribed to new threads in <#{channel_id}>."
+            )
+        await self._reply_ephemeral(interaction, msg)
+
+    @app_commands.command(
+        name="unsubscribe",
+        description="Stop being auto-added to new exercise threads in this channel.",
+    )
+    @app_commands.describe(
+        user="(Manage Threads only) unsubscribe this member instead of yourself.",
+    )
+    async def unsubscribe(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member | None = None,
+    ) -> None:
+        """Opt a member out of this channel's future exercise threads.
+
+        Mirror of :meth:`subscribe`: self-service by default, while targeting another ``user``
+        requires *Manage Threads*. Only affects **future** ``/sheet`` threads — members already
+        added to existing threads stay in them (they can leave via Discord's own thread UI).
+        """
+        channel_id = await self._operating_channel(interaction)
+        if channel_id is None:
+            return
+        target = await self._subscription_target(interaction, user)
+        if target is None:
+            return
+
+        removed = await self.store.remove_subscriber(channel_id, target.id)
+        is_self = target.id == interaction.user.id
+        if removed and is_self:
+            msg = f"You're unsubscribed from new threads in <#{channel_id}>."
+        elif removed:
+            msg = f"{target.mention} is unsubscribed from new threads in <#{channel_id}>."
+        elif is_self:
+            msg = f"You weren't subscribed to new threads in <#{channel_id}>."
+        else:
+            msg = f"{target.mention} wasn't subscribed to new threads in <#{channel_id}>."
+        await self._reply_ephemeral(interaction, msg)
+
+    @app_commands.command(
+        name="subscribers",
+        description="List who is auto-added to new exercise threads in this channel.",
+    )
+    async def subscribers(self, interaction: discord.Interaction) -> None:
+        """Show this channel's thread subscribers (ephemeral).
+
+        Lists the members who will be added to threads ``/sheet`` creates in this operating
+        channel. Mentions render as names without pinging (the reply is ephemeral, so only the
+        caller sees it). Anyone in the channel may view the list.
+        """
+        channel_id = await self._operating_channel(interaction)
+        if channel_id is None:
+            return
+        user_ids = await self.store.get_subscribers(channel_id)
+        if not user_ids:
+            await self._reply_ephemeral(
+                interaction,
+                f"No one is subscribed to new threads in <#{channel_id}> yet — "
+                "use `/subscribe` to opt in.",
+            )
+            return
+        listing = "\n".join(f"• <@{uid}>" for uid in user_ids)
+        await self._reply_ephemeral(
+            interaction,
+            f"**{len(user_ids)}** member(s) will be added to new threads in "
+            f"<#{channel_id}>:\n{listing}",
+        )
 
     # ------------------------------------------------------------------
     # Error handling
